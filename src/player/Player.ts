@@ -149,7 +149,8 @@ export class Player {
     this.moving = len > 0;
 
     const p = { x: this.pos.x, z: this.pos.z };
-    moveWithCollision(p, this.vel.x * dt, this.vel.z * dt, PLAYER.radius, this.level.isBlocked);
+    const feet = this.pos.y;
+    moveWithCollision(p, this.vel.x * dt, this.vel.z * dt, PLAYER.radius, (cx, cz) => this.level.isBlockedFor(cx, cz, feet));
     this.pos.x = p.x;
     this.pos.z = p.z;
 
@@ -157,11 +158,22 @@ export class Player {
       this.vy = PLAYER.jumpSpeed;
       this.grounded = false;
     }
+    const ground = this.level.groundAt(this.pos.x, this.pos.z, PLAYER.radius, this.pos.y);
+    if (this.grounded) {
+      if (this.pos.y > ground + 0.02) {
+        // walked off a ledge
+        this.grounded = false;
+        this.vy = 0;
+      } else if (ground > this.pos.y) {
+        // stepped up onto something low
+        this.pos.y = Math.min(ground, this.pos.y + Math.max(0.05, (ground - this.pos.y) * Math.min(1, dt * 16)));
+      }
+    }
     if (!this.grounded) {
       this.vy -= PLAYER.gravity * dt;
       this.pos.y += this.vy * dt;
-      if (this.pos.y <= 0) {
-        this.pos.y = 0;
+      if (this.pos.y <= ground && this.vy <= 0) {
+        this.pos.y = ground;
         this.vy = 0;
         this.grounded = true;
         this.sfx.footstep();

@@ -48,6 +48,8 @@ export class Hud {
   private readonly perks = el('perks');
   private readonly powerups = el('powerups');
   private readonly flashEl = el('flash');
+  private readonly utility = el('utility');
+  private lastUtility = '';
   private damage = 0;
   private hitT = 0;
   private bannerT = 0;
@@ -163,6 +165,13 @@ export class Hud {
       fill.style.width = `${(p.remaining / p.duration) * 100}%`;
       d.classList.toggle('ending', p.remaining < 5);
     });
+  }
+
+  setUtilities(grenades: number, knives: number): void {
+    const text = `GRENADES ${grenades}   ·   KNIVES ${knives}`;
+    if (text === this.lastUtility) return;
+    this.lastUtility = text;
+    this.utility.textContent = text;
   }
 
   damageFlash(): void {

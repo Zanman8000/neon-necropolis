@@ -152,6 +152,7 @@ export class Arsenal {
   private swayY = 0;
   private spreadHeat = 0;
   private sprintFire = false;
+  private throwT = 0;
   private readonly raycaster = new THREE.Raycaster();
   private readonly tmpDir = new THREE.Vector3();
   private readonly tmpOrigin = new THREE.Vector3();
@@ -316,6 +317,11 @@ export class Arsenal {
     this.sfx.weaponSwap();
   }
 
+  /** Quick arm-back animation for a throw. */
+  playThrow(): void {
+    this.throwT = 0.32;
+  }
+
   /** Knife without switching slots. */
   quickMeleeAttack(): boolean {
     if (this.melee.cooldown > 0 || this.quickMelee > 0) return false;
@@ -451,6 +457,13 @@ export class Arsenal {
       rotZ += 0.25;
     }
     if (busy) rotX -= 0.7;
+    if (this.throwT > 0) {
+      this.throwT -= dt;
+      const s = Math.sin((this.throwT / 0.32) * Math.PI);
+      rotX += s * 0.45;
+      rotZ -= s * 0.3;
+      this.viewRoot.position.x += s * 0.08;
+    }
     if (w && w.reloading && !showMelee) {
       const t = 1 - w.reloadT / w.reloadTime;
       const s = Math.sin(t * Math.PI);

@@ -500,6 +500,49 @@ export class Sfx {
     this.burst(dest, 0.6, 'highpass', 800, 3000, 1, 0.3, 0.2);
   }
 
+  // ------------------------------------------------------------------ throwables
+
+  throwWhoosh(): void {
+    const dest = this.out(0.35);
+    if (!dest) return;
+    this.burst(dest, 0.25, 'bandpass', 500, 2400, 1.5, 0.8, 0.04);
+  }
+
+  grenadeBounce(x: number, z: number): void {
+    const dest = this.out(0.3, x, z);
+    if (!dest) return;
+    this.burst(dest, 0.05, 'bandpass', 2200, 1200, 4, 1);
+    this.tone(dest, 'triangle', 700, 400, 0.05, 0.4);
+  }
+
+  explosion(x: number, z: number): void {
+    const dest = this.out(1.0, x, z);
+    if (!dest) return;
+    this.burst(dest, 1.1, 'lowpass', 2200, 60, 0.7, 1, 0.003);
+    this.burst(dest, 0.3, 'bandpass', 3000, 800, 1.2, 0.7, 0.002);
+    this.tone(dest, 'sine', 120, 28, 1.0, 1, 0.003);
+  }
+
+  knifeHit(x: number, z: number): void {
+    const dest = this.out(0.5, x, z);
+    if (!dest) return;
+    this.burst(dest, 0.12, 'lowpass', 1600, 300, 0.8, 1);
+    this.tone(dest, 'sine', 240, 80, 0.14, 0.7);
+  }
+
+  knifeClatter(x: number, z: number): void {
+    const dest = this.out(0.35, x, z);
+    if (!dest) return;
+    this.burst(dest, 0.08, 'bandpass', 3200, 1800, 5, 1);
+    this.tone(dest, 'triangle', 1800, 1200, 0.08, 0.4);
+  }
+
+  lootPickup(): void {
+    const dest = this.out(0.35);
+    if (!dest) return;
+    this.tone(dest, 'sine', 880, 1320, 0.12, 0.7);
+  }
+
   // ------------------------------------------------------------------ ambience
 
   startAmbience(): void {

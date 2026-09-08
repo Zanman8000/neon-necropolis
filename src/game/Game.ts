@@ -18,6 +18,7 @@ import { Sparks } from '../fx/Particles';
 import { Hud } from '../ui/Hud';
 import { SettingsPanel, loadSettings, type SettingsData, type Quality } from '../ui/Settings';
 import { Powerups } from './Powerups';
+import { Utilities } from '../weapons/Utilities';
 import {
   START_POINTS,
   POINTS,
@@ -71,6 +72,7 @@ export class Game {
   hud!: Hud;
   settings!: SettingsPanel;
   powerups!: Powerups;
+  utilities!: Utilities;
   private composer!: EffectComposer;
   private bloom!: UnrealBloomPass;
   state: State = 'boot';
@@ -121,6 +123,19 @@ export class Game {
     this.scene.add(this.zombies.group);
     this.powerups = new Powerups();
     this.scene.add(this.powerups.group);
+    this.utilities = new Utilities(this.sfx, this.sparks);
+    this.scene.add(this.utilities.group);
+    this.utilities.onGrenadeKills = (hits, kills) => {
+      const pts = (hits * POINTS.hit + kills * POINTS.killBody) * this.powerups.pointsMultiplier;
+      this.addPoints(pts);
+      if (hits > 0) this.hud.hitMarker(kills > 0);
+    };
+    this.utilities.onKnifeHit = (killed) => {
+      this.addPoints(pointsForHit(killed, false, this.powerups.pointsMultiplier));
+      this.hud.hitMarker(killed);
+    };
+    this.utilities.onSelfDamage = (amount) => this.player.takeDamage(amount);
+    this.utilities.onPickup = (kind) => this.hud.showNotice(kind === 'knives' ? '+2 THROWING KNIVES' : '+1 GRENADE', 1.5);
     this.hud = new Hud();
 
     this.arsenal.getZombieTargets = () => this.zombies.getTargets();
@@ -136,6 +151,7 @@ export class Game {
     this.zombies.onRoundEnd = () => this.sfx.roundEnd();
     this.zombies.onKill = (z) => {
       this.powerups.maybeDrop(z.pos.x, z.pos.z);
+      this.utilities.dropLoot(z.pos.x, z.pos.z);
     };
     this.powerups.onPickup = (kind, x, z) => this.applyPowerup(kind, x, z);
     this.powerups.onExpire = () => this.sfx.powerupExpire();
@@ -269,6 +285,7 @@ export class Game {
     this.zombies.start();
     this.zombies.instaKill = false;
     this.powerups.reset();
+    this.utilities.reset();
     this.perks.clear();
     this.quickPatchBuys = 0;
     this.reviveT = 0;
@@ -406,6 +423,8 @@ export class Game {
       this.arsenal.update(dt, this.input, this.player, playing);
       this.zombies.update(dt, this.player);
       this.powerups.update(dt, this.player.pos);
+      if (playing) this.throwables();
+      this.utilities.update(dt, this.level, this.zombies, this.player.pos);
       if (playing) this.interactions(dt);
       else this.hud.setPrompt(null);
       const up = this.level.upgrade;
@@ -442,11 +461,38 @@ export class Game {
     const px = Math.tan(this.arsenal.spread) * (window.innerHeight / (2 * Math.tan(fovRad / 2)));
     this.hud.setCrosshair(6 + px, this.player.sprinting);
     this.hud.setFps(this.fps, this.debug);
+    this.hud.setUtilities(this.utilities.grenades, this.utilities.knives);
     const active = this.powerups.active;
     const list = (['instakill', 'doublepoints'] as const)
       .filter((k) => active[k] > 0)
       .map((k) => ({ name: POWERUPS[k].name, color: POWERUPS[k].color, remaining: active[k], duration: POWERUPS[k].duration }));
     this.hud.setPowerups(list);
+  }
+
+  // ---------------------------------------------------------------- throwables
+
+  private throwables(): void {
+    if (!this.player.alive || this.player.downed) return;
+    const wantGrenade = this.input.wasPressed('KeyG');
+    const wantKnife = this.input.wasPressed('KeyT');
+    if (!wantGrenade && !wantKnife) return;
+    const origin = this.player.camera.position.clone().addScaledVector(this.player.forward, 0.35);
+    origin.y -= 0.1;
+    if (wantGrenade) {
+      if (this.utilities.grenades <= 0) {
+        this.hud.showNotice('NO GRENADES', 1);
+        return;
+      }
+      const dir = this.player.forward.clone();
+      dir.y += 0.18;
+      if (this.utilities.throwGrenade(origin, dir)) this.arsenal.playThrow();
+    } else {
+      if (this.utilities.knives <= 0) {
+        this.hud.showNotice('NO THROWING KNIVES', 1);
+        return;
+      }
+      if (this.utilities.throwKnife(origin, this.player.forward)) this.arsenal.playThrow();
+    }
   }
 
   // ---------------------------------------------------------------- perks & power-ups

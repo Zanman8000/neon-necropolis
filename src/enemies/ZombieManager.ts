@@ -131,6 +131,58 @@ export class ZombieManager {
     return out;
   }
 
+  /** Damage one zombie directly. Returns true when it died. */
+  damageZombie(z: Zombie, damage: number, headshot = false): boolean {
+    if (!z.active) return false;
+    z.health -= this.instaKill ? z.health : damage;
+    z.hitFlash();
+    const p = new THREE.Vector3(z.pos.x, z.y + 1.3, z.pos.z);
+    this.sparks.emit(p, new THREE.Vector3(0, 1, 0), 6, ICHOR, 2.5, 0.07, 0.6);
+    this.sfx.zombieHit(z.pos.x, z.pos.z);
+    if (z.health <= 0) {
+      this.kill(z, headshot);
+      return true;
+    }
+    return false;
+  }
+
+  /** Nearest active zombie whose body contains the point (with a radius). */
+  hitAt(x: number, y: number, z: number, r: number): Zombie | null {
+    let best: Zombie | null = null;
+    let bd = Infinity;
+    for (const zb of this.zombies) {
+      if (!zb.active) continue;
+      const d = Math.hypot(zb.pos.x - x, zb.pos.z - z);
+      if (d > r + ZOMBIE.radius) continue;
+      if (y < zb.y - 0.2 || y > zb.y + 2.0) continue;
+      if (d < bd) {
+        bd = d;
+        best = zb;
+      }
+    }
+    return best;
+  }
+
+  /** Explosion damage with linear falloff. Returns how many were hit and killed. */
+  areaDamage(x: number, z: number, radius: number, damage: number): { hits: number; kills: number } {
+    let hits = 0;
+    let kills = 0;
+    for (const zb of this.zombies) {
+      if (!zb.active) continue;
+      const d = Math.hypot(zb.pos.x - x, zb.pos.z - z);
+      if (d > radius) continue;
+      hits++;
+      const dmg = damage * (1 - 0.7 * (d / radius));
+      zb.health -= this.instaKill ? zb.health : dmg;
+      zb.hitFlash();
+      if (zb.health <= 0) {
+        this.kill(zb, false);
+        kills++;
+      }
+    }
+    return { hits, kills };
+  }
+
   /** Kill every active zombie (nuke). No per-kill callbacks fire. */
   killAll(): number {
     let n = 0;

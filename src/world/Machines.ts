@@ -452,6 +452,10 @@ export class SalvageCrate {
     return cellCenter(this.pads[this.padIndex].x, this.pads[this.padIndex].z);
   }
 
+  get padIndexPublic(): number {
+    return this.padIndex;
+  }
+
   get zone(): number {
     return this.pads[this.padIndex].zone;
   }

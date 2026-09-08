@@ -30,6 +30,8 @@ import { PerkMachine, PowerLever, UpgradeStation, SalvageCrate, type Emissives, 
 
 /** How many point lights are active at once. Kept constant so shaders never recompile. */
 const ACTIVE_POINT_LIGHTS = 10;
+/** How high a ledge can be stepped onto without jumping. */
+const STEP_UP = 0.42;
 
 export interface DoorState {
   def: DoorDef;
@@ -123,6 +125,8 @@ export class Level {
   readonly sun: THREE.DirectionalLight;
   readonly rain: THREE.Points;
   private readonly blockedStatic: Uint8Array;
+  /** Top surface height per cell: 0 for floor, prop height for low props, Infinity for walls. */
+  private readonly topStatic: Float32Array;
   private readonly doorAtCell = new Map<number, DoorState>();
   private readonly staticTargets: THREE.Object3D[] = [];
   private bulletTargets: THREE.Object3D[] = [];
@@ -149,6 +153,7 @@ export class Level {
       this.blockedStatic[i] = floor || k === 'door' ? 0 : 1;
       this.walkable[i] = floor ? 1 : 0;
     }
+    this.topStatic = this.computeTops();
     this.mats = this.makeMaterials();
     this.buildSky();
     this.buildFloors();
@@ -190,6 +195,55 @@ export class Level {
     const d = this.doorAtCell.get(i);
     return d ? !d.open : false;
   };
+
+  private computeTops(): Float32Array {
+    const { width, height, kinds, propAt } = this.data;
+    const tops = new Float32Array(width * height).fill(Infinity);
+    for (let i = 0; i < width * height; i++) {
+      if (kinds[i] === 'floor' && !propAt[i]) tops[i] = 0;
+      else if (kinds[i] === 'door') tops[i] = 0;
+    }
+    const propHeight: Record<string, number> = { bench: 0.52, planter: 0.78, desk: 1.1, kiosk: 3.1, vendor: 1.9, column: WALL_H, rack: 2.6 };
+    for (const p of this.data.props) tops[this.idx(p.x, p.z)] = propHeight[p.kind] ?? WALL_H;
+    for (const p of this.data.perks) tops[this.idx(p.x, p.z)] = 2.2;
+    for (const c of this.data.crates) tops[this.idx(c.x, c.z)] = 0.16;
+    if (this.data.upgrade) tops[this.idx(this.data.upgrade.x, this.data.upgrade.z)] = 2.35;
+    return tops;
+  }
+
+  /** Height of the surface you would stand on in a cell. Infinity when it cannot be stood on. */
+  topAt(x: number, z: number): number {
+    if (!this.inBounds(x, z)) return Infinity;
+    const i = this.idx(x, z);
+    const d = this.doorAtCell.get(i);
+    if (d) return d.open ? 0 : Infinity;
+    if (this.crate) {
+      const pad = this.data.crates[this.crate.padIndexPublic];
+      if (pad && pad.x === x && pad.z === z) return 0.95;
+    }
+    return this.topStatic[i];
+  }
+
+  /** Blocked for something whose feet are at feetY. Low props can be stepped or jumped onto. */
+  isBlockedFor(x: number, z: number, feetY: number): boolean {
+    return this.topAt(x, z) > feetY + STEP_UP;
+  }
+
+  /** Highest standable surface under a footprint of radius r at feet height feetY. */
+  groundAt(px: number, pz: number, r: number, feetY: number): number {
+    const x0 = Math.floor((px - r) / CELL);
+    const x1 = Math.floor((px + r) / CELL);
+    const z0 = Math.floor((pz - r) / CELL);
+    const z1 = Math.floor((pz + r) / CELL);
+    let best = 0;
+    for (let z = z0; z <= z1; z++) {
+      for (let x = x0; x <= x1; x++) {
+        const t = this.topAt(x, z);
+        if (t <= feetY + STEP_UP && t > best) best = t;
+      }
+    }
+    return best;
+  }
 
   zoneAtWorld(wx: number, wz: number): number {
     const c = worldToCell(wx, wz);
