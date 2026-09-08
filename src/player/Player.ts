@@ -18,7 +18,10 @@ export class Player {
   sprinting = false;
   moving = false;
   health: number = PLAYER.maxHealth;
+  maxHealth: number = PLAYER.maxHealth;
   alive = true;
+  /** Down but not out: waiting on an auto-revive. */
+  downed = false;
   sensitivity = 0.0022;
   invertY = false;
   baseFov = 75;
@@ -48,8 +51,10 @@ export class Player {
     this.pitch = 0;
     this.vy = 0;
     this.grounded = true;
-    this.health = PLAYER.maxHealth;
+    this.maxHealth = PLAYER.maxHealth;
+    this.health = this.maxHealth;
     this.alive = true;
+    this.downed = false;
     this.sinceDamage = 999;
     this.bobPhase = 0;
     this.bobAmount = 0;
@@ -69,8 +74,21 @@ export class Player {
     return this.camera.position.clone();
   }
 
+  /** Drop into the downed state (health stays at zero, no movement). */
+  goDown(): void {
+    this.downed = true;
+    this.health = 0;
+    this.vel.set(0, 0, 0);
+  }
+
+  revive(health: number): void {
+    this.downed = false;
+    this.health = Math.min(this.maxHealth, health);
+    this.sinceDamage = 0;
+  }
+
   takeDamage(amount: number): void {
-    if (!this.alive) return;
+    if (!this.alive || this.downed) return;
     this.health -= amount;
     this.sinceDamage = 0;
     this.sfx.playerHurt();
@@ -103,7 +121,7 @@ export class Player {
     let wantJump = false;
     let wantSprint = false;
     let wantCrouch = false;
-    if (allowInput && this.alive) {
+    if (allowInput && this.alive && !this.downed) {
       fwd = (input.isDown('KeyW') ? 1 : 0) - (input.isDown('KeyS') ? 1 : 0);
       strafe = (input.isDown('KeyD') ? 1 : 0) - (input.isDown('KeyA') ? 1 : 0);
       wantJump = input.wasPressed('Space');
@@ -152,8 +170,8 @@ export class Player {
 
     // regen
     this.sinceDamage += dt;
-    if (this.alive && this.sinceDamage > PLAYER.regenDelay && this.health < PLAYER.maxHealth) {
-      this.health = Math.min(PLAYER.maxHealth, this.health + PLAYER.regenRate * dt);
+    if (this.alive && !this.downed && this.sinceDamage > PLAYER.regenDelay && this.health < this.maxHealth) {
+      this.health = Math.min(this.maxHealth, this.health + PLAYER.regenRate * dt);
     }
 
     // head bob + footsteps
@@ -168,7 +186,7 @@ export class Player {
         this.sfx.footstep();
       }
     }
-    const targetEye = this.crouching ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight;
+    const targetEye = this.downed ? 0.55 : this.crouching ? PLAYER.crouchEyeHeight : PLAYER.eyeHeight;
     this.eye += (targetEye - this.eye) * Math.min(1, dt * 10);
     this.syncCamera();
   }

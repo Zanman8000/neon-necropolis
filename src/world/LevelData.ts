@@ -7,6 +7,8 @@ import type { Vec2i } from './Grid';
  *   ' ' void            'o' outside ground (zombie spawn side)   '#' wall
  *   '1'-'4' floor (zone) 'D' blast door   'W' barricaded window   'P' player spawn   'S' floor spawn pod
  *   'A' SMG wall buy    'B' shotgun wall buy   'C' rifle wall buy
+ *   'E' power lever     'U' overclock station  'X' salvage crate pad
+ *   perk machines: Q quick patch  J ironhide  R rapid rack  T trigger tonic  M pack mule
  *   props (block movement): k kiosk  b bench  p planter  v vending drone  c column  d desk  r server rack
  *
  * Zones: 1 Transit Plaza (spawn, outdoor)  2 Noodle Street (outdoor)  3 SynthCorp Lobby (indoor)  4 Data Vault (indoor)
@@ -15,21 +17,21 @@ export const MAP_ROWS: string[] = [
   'oooooooooooooooooooooooooooooooooooooooooooo',
   'oooooooooooooooooooooooooooooooooooooooooooo',
   'oo########W#####################W#########oo',
-  'oo#333333333333333333#4444444444444444444#oo',
-  'oo#333333333333333S33#4444444444444444444#oo',
+  'oo#333333333333333333#444444444U444444444#oo',
+  'oo#333333333333333S33#44444444444444444X4#oo',
   'oo#333333333333333333#444rrrrrr44rrrrrr44#oo',
   'ooW333c33333333c33333#4444444444444444444Woo',
   'oo#333333dddd33333333#4444444444444444444#oo',
   'oo#333333dddd33333333D444rrrrrr44rrrrrr44#oo',
-  'oo#C33333333333333333#4444444444444444444#oo',
+  'oo#C33333333333333333#444444444444444444E#oo',
   'oo#333333333333333333#4444444444444444444#oo',
   'oo#333c33333333c33333#444rrrrrr44rrrrrr44#oo',
-  'oo#333333333333333333#4444444444444444444#oo',
-  'oo#333333333333333333#44444444444444444S4#oo',
+  'oo#33333333333333333T#4444444444444444444#oo',
+  'oo#33X333333333333333#R4444444444444444S4#oo',
   'oo#333333333333333333#4444444444444444444#oo',
   'oo#########D###################D##########oo',
-  'oo#111111111111111111#2222222222222222222#oo',
-  'oo#1p11111111111111p1#2222222222222222222#oo',
+  'oo#111111111111111111#2222222222222222X22#oo',
+  'oo#1p11111111111111p1#222222222222222222J#oo',
   'oo#11111111111111111A#2222222222222222222#oo',
   'oo#111b111111111b1111#2222####222####2222#oo',
   'oo#11111111kk11111111#2222####222####2222#oo',
@@ -38,8 +40,8 @@ export const MAP_ROWS: string[] = [
   'oo#111111111111111111D2222222222222222222#oo',
   'oo#11111111P111111111#2222####222####2222Woo',
   'oo#111b111111111b1111#2222####222####2222#oo',
-  'oo#111111111111111111#2222222222222222222#oo',
-  'oo#1p11111111111111p1#2222222222222222S22#oo',
+  'oo#Q11111111111111X11#2222222222222222222#oo',
+  'oo#1p11111111111111p1#M222222222222222S22#oo',
   'oo#111111111111111111#2222222222222222222#oo',
   'oo######W#######W#############W###########oo',
   'oooooooooooooooooooooooooooooooooooooooooooo',

@@ -26,7 +26,31 @@ describe('map data', () => {
     expect(level.windows.length).toBe(9);
     expect(level.buys.length).toBe(3);
     expect(level.pods.length).toBe(3);
+    expect(level.perks.length).toBe(5);
+    expect(level.crates.length).toBe(4);
+    expect(level.power).not.toBeNull();
+    expect(level.upgrade).not.toBeNull();
     expect(level.playerSpawn).toEqual({ x: 11, z: 24 });
+  });
+
+  it('machines block their cell and can be reached from an adjacent walkable cell', () => {
+    const field = new FlowField(level.width, level.height);
+    const walkable = walkableWithDoors(new Set(level.doors.map((d) => d.id)));
+    field.compute(walkable, level.playerSpawn.x, level.playerSpawn.z);
+    const cells = [...level.perks, ...level.crates, level.upgrade!];
+    for (const c of cells) {
+      expect(level.propAt[idx(c.x, c.z)]).toBe(1);
+      const reachable = [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ].some(([dx, dz]) => field.distanceAt(c.x + dx, c.z + dz) < Infinity);
+      expect(reachable).toBe(true);
+    }
+    const p = level.power!;
+    expect(level.propAt[idx(p.x, p.z)]).toBe(0);
+    expect(field.distanceAt(p.x, p.z)).toBeLessThan(Infinity);
   });
 
   it('assigns every floor cell to a known zone', () => {

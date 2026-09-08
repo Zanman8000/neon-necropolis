@@ -53,6 +53,32 @@ export interface PropDef {
   zone: number;
 }
 
+/** A perk vending machine. Occupies its cell and backs onto a wall. */
+export interface PerkDef {
+  id: number;
+  kind: string;
+  x: number;
+  z: number;
+  wallDir: Vec2i;
+  zone: number;
+}
+
+/** A pad the salvage crate can sit on. Occupies its cell. */
+export interface CrateDef {
+  id: number;
+  x: number;
+  z: number;
+  zone: number;
+}
+
+/** Power lever (walkable cell, lever on the wall) and the upgrade station (occupies its cell). */
+export interface StationDef {
+  x: number;
+  z: number;
+  wallDir: Vec2i;
+  zone: number;
+}
+
 export interface ParsedLevel {
   width: number;
   height: number;
@@ -64,6 +90,10 @@ export interface ParsedLevel {
   windows: WindowDef[];
   buys: BuyDef[];
   pods: PodDef[];
+  perks: PerkDef[];
+  crates: CrateDef[];
+  power: StationDef | null;
+  upgrade: StationDef | null;
   playerSpawn: Vec2i;
 }
 
@@ -81,6 +111,14 @@ export const BUY_CHARS: Record<string, string> = {
   A: 'smg',
   B: 'shotgun',
   C: 'rifle',
+};
+
+export const PERK_CHARS: Record<string, string> = {
+  Q: 'quickpatch',
+  J: 'ironhide',
+  R: 'rapidrack',
+  T: 'triggertonic',
+  M: 'packmule',
 };
 
 const DIRS4: Vec2i[] = [
@@ -118,6 +156,10 @@ export function parseLevel(rows: string[], doorCosts: Record<string, number>): P
   const windowCells: Vec2i[] = [];
   const buyCells: { x: number; z: number; weapon: string }[] = [];
   const podCells: Vec2i[] = [];
+  const perkCells: { x: number; z: number; kind: string }[] = [];
+  const crateCells: Vec2i[] = [];
+  let powerCell: Vec2i | null = null;
+  let upgradeCell: Vec2i | null = null;
   let playerSpawn: Vec2i | null = null;
 
   for (let z = 0; z < height; z++) {
@@ -146,9 +188,26 @@ export function parseLevel(rows: string[], doorCosts: Record<string, number>): P
       } else if (ch === 'S') {
         kinds[i] = 'floor';
         podCells.push({ x, z });
+      } else if (ch === 'E') {
+        kinds[i] = 'floor';
+        if (powerCell) throw new Error('Multiple power switches');
+        powerCell = { x, z };
+      } else if (ch === 'U') {
+        kinds[i] = 'floor';
+        propAt[i] = 1;
+        if (upgradeCell) throw new Error('Multiple upgrade stations');
+        upgradeCell = { x, z };
+      } else if (ch === 'X') {
+        kinds[i] = 'floor';
+        propAt[i] = 1;
+        crateCells.push({ x, z });
       } else if (BUY_CHARS[ch]) {
         kinds[i] = 'floor';
         buyCells.push({ x, z, weapon: BUY_CHARS[ch] });
+      } else if (PERK_CHARS[ch]) {
+        kinds[i] = 'floor';
+        propAt[i] = 1;
+        perkCells.push({ x, z, kind: PERK_CHARS[ch] });
       } else if (PROP_CHARS[ch]) {
         kinds[i] = 'floor';
         propAt[i] = 1;
@@ -185,6 +244,12 @@ export function parseLevel(rows: string[], doorCosts: Record<string, number>): P
     }
   }
   for (const p of props) p.zone = zones[idx(p.x, p.z)];
+
+  const wallNeighbor = (c: Vec2i, what: string): Vec2i => {
+    const wall = DIRS4.find((d) => inBounds(c.x + d.x, c.z + d.z) && kinds[idx(c.x + d.x, c.z + d.z)] === 'wall');
+    if (!wall) throw new Error(`${what} at ${c.x},${c.z} is not next to a wall`);
+    return wall;
+  };
 
   const doors: DoorDef[] = doorCells.map((c, id) => {
     const floorAt = (x: number, z: number) => inBounds(x, z) && kinds[idx(x, z)] === 'floor';
@@ -224,15 +289,48 @@ export function parseLevel(rows: string[], doorCosts: Record<string, number>): P
     return { id, x: c.x, z: c.z, inside, outside, dir, zone: zones[idx(inside.x, inside.z)] };
   });
 
-  const buys: BuyDef[] = buyCells.map((c, id) => {
-    const wall = DIRS4.find((d) => inBounds(c.x + d.x, c.z + d.z) && kinds[idx(c.x + d.x, c.z + d.z)] === 'wall');
-    if (!wall) throw new Error(`Wall buy at ${c.x},${c.z} is not next to a wall`);
-    return { id, x: c.x, z: c.z, weapon: c.weapon, wallDir: wall, zone: zones[idx(c.x, c.z)] };
-  });
+  const buys: BuyDef[] = buyCells.map((c, id) => ({
+    id,
+    x: c.x,
+    z: c.z,
+    weapon: c.weapon,
+    wallDir: wallNeighbor(c, 'Wall buy'),
+    zone: zones[idx(c.x, c.z)],
+  }));
 
   const pods: PodDef[] = podCells.map((c, id) => ({ id, x: c.x, z: c.z, zone: zones[idx(c.x, c.z)] }));
 
-  return { width, height, kinds, zones, propAt, props, doors, windows, buys, pods, playerSpawn };
+  const perks: PerkDef[] = perkCells.map((c, id) => ({
+    id,
+    kind: c.kind,
+    x: c.x,
+    z: c.z,
+    wallDir: wallNeighbor(c, 'Perk machine'),
+    zone: zones[idx(c.x, c.z)],
+  }));
+
+  const crates: CrateDef[] = crateCells.map((c, id) => ({ id, x: c.x, z: c.z, zone: zones[idx(c.x, c.z)] }));
+
+  const station = (c: Vec2i | null, what: string): StationDef | null =>
+    c ? { x: c.x, z: c.z, wallDir: wallNeighbor(c, what), zone: zones[idx(c.x, c.z)] } : null;
+
+  return {
+    width,
+    height,
+    kinds,
+    zones,
+    propAt,
+    props,
+    doors,
+    windows,
+    buys,
+    pods,
+    perks,
+    crates,
+    power: station(powerCell, 'Power switch'),
+    upgrade: station(upgradeCell, 'Upgrade station'),
+    playerSpawn,
+  };
 }
 
 /** Grid-aligned line of sight test between two world points (2D). */

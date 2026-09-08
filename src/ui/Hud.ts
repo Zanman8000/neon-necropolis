@@ -1,9 +1,27 @@
 // DOM heads-up display. Everything is plain HTML/CSS layered over the canvas.
+import type { SlotView } from '../weapons/Weapons';
 
 function el<T extends HTMLElement = HTMLElement>(id: string): T {
   const e = document.getElementById(id);
   if (!e) throw new Error(`Missing HUD element #${id}`);
   return e as T;
+}
+
+function hex(n: number): string {
+  return '#' + n.toString(16).padStart(6, '0');
+}
+
+export interface PerkView {
+  short: string;
+  name: string;
+  color: number;
+}
+
+export interface PowerupView {
+  name: string;
+  color: number;
+  remaining: number;
+  duration: number;
 }
 
 export class Hud {
@@ -13,6 +31,7 @@ export class Hud {
   private readonly roundNum = el('round-num');
   private readonly zoneName = el('zone-name');
   private readonly weaponName = el('weapon-name');
+  private readonly ammoBlock = el('ammo');
   private readonly ammoMag = el('ammo-mag');
   private readonly ammoReserve = el('ammo-reserve');
   private readonly reloadHint = el('reload-hint');
@@ -26,11 +45,18 @@ export class Hud {
   private readonly notice = el('notice');
   private readonly fps = el('fps');
   private readonly slots = el('slots');
+  private readonly perks = el('perks');
+  private readonly powerups = el('powerups');
+  private readonly flashEl = el('flash');
   private damage = 0;
   private hitT = 0;
   private bannerT = 0;
   private noticeT = 0;
+  private flashT = 0;
+  private flashDur = 1;
   private lastPoints = -1;
+  private lastSlots = '';
+  private lastPerks = '';
 
   show(): void {
     this.root.classList.remove('hidden');
@@ -63,22 +89,28 @@ export class Hud {
     this.zoneName.textContent = name;
   }
 
-  setWeapon(name: string, slotIndex: number, slotCount: number, names: (string | null)[]): void {
-    this.weaponName.textContent = name;
+  setWeapon(name: string, slots: SlotView[]): void {
+    if (this.weaponName.textContent !== name) this.weaponName.textContent = name;
+    const key = slots.map((s) => `${s.label}${s.kind}${s.active ? 1 : 0}${s.name ?? ''}`).join('|');
+    if (key === this.lastSlots) return;
+    this.lastSlots = key;
     this.slots.innerHTML = '';
-    for (let i = 0; i < slotCount; i++) {
-      const s = document.createElement('div');
-      s.className = 'slot' + (i === slotIndex ? ' active' : '') + (names[i] ? '' : ' empty');
-      s.textContent = names[i] ? String(i + 1) : '·';
-      this.slots.appendChild(s);
+    for (const s of slots) {
+      const d = document.createElement('div');
+      d.className = `slot ${s.kind}` + (s.active ? ' active' : '');
+      d.textContent = s.kind === 'empty' ? '·' : s.label;
+      d.title = s.name ?? '';
+      this.slots.appendChild(d);
     }
   }
 
-  setAmmo(mag: number, reserve: number, reloading: boolean): void {
+  setAmmo(mag: number, reserve: number, reloading: boolean, melee: boolean): void {
+    this.ammoBlock.classList.toggle('hidden', melee);
+    this.reloadHint.classList.toggle('hidden', melee || !(reloading || (mag === 0 && reserve > 0)));
+    if (melee) return;
     this.ammoMag.textContent = String(mag);
     this.ammoReserve.textContent = String(reserve);
     this.ammoMag.classList.toggle('low', mag === 0 || mag <= 4);
-    this.reloadHint.classList.toggle('hidden', !(reloading || (mag === 0 && reserve > 0)));
     this.reloadHint.textContent = reloading ? 'RELOADING' : 'PRESS R TO RELOAD';
   }
 
@@ -91,8 +123,58 @@ export class Hud {
     this.damage = Math.max(this.damage * 0.94, dmg * 0.85);
   }
 
+  setPerks(perks: PerkView[]): void {
+    const key = perks.map((p) => p.short).join(',');
+    if (key === this.lastPerks) return;
+    this.lastPerks = key;
+    this.perks.innerHTML = '';
+    for (const p of perks) {
+      const d = document.createElement('div');
+      d.className = 'perk';
+      d.textContent = p.short;
+      d.title = p.name;
+      d.style.borderColor = hex(p.color);
+      d.style.color = hex(p.color);
+      d.style.boxShadow = `0 0 8px ${hex(p.color)}66`;
+      this.perks.appendChild(d);
+    }
+  }
+
+  setPowerups(list: PowerupView[]): void {
+    if (list.length === 0) {
+      if (this.powerups.childElementCount > 0) this.powerups.innerHTML = '';
+      return;
+    }
+    while (this.powerups.childElementCount < list.length) {
+      const d = document.createElement('div');
+      d.className = 'powerup';
+      d.innerHTML = '<span class="pu-name"></span><div class="pu-bar"><div class="pu-fill"></div></div>';
+      this.powerups.appendChild(d);
+    }
+    while (this.powerups.childElementCount > list.length) this.powerups.lastElementChild?.remove();
+    list.forEach((p, i) => {
+      const d = this.powerups.children[i] as HTMLElement;
+      const name = d.querySelector('.pu-name') as HTMLElement;
+      const fill = d.querySelector('.pu-fill') as HTMLElement;
+      const label = `${p.name} ${Math.ceil(p.remaining)}`;
+      if (name.textContent !== label) name.textContent = label;
+      name.style.color = hex(p.color);
+      fill.style.background = hex(p.color);
+      fill.style.width = `${(p.remaining / p.duration) * 100}%`;
+      d.classList.toggle('ending', p.remaining < 5);
+    });
+  }
+
   damageFlash(): void {
     this.damage = 1;
+  }
+
+  /** Full-screen colour flash (nuke, power-up pickup). */
+  flash(color: number, seconds = 0.6, alpha = 0.8): void {
+    this.flashEl.style.background = hex(color);
+    this.flashEl.style.opacity = String(alpha);
+    this.flashT = seconds;
+    this.flashDur = seconds;
   }
 
   hitMarker(kill: boolean): void {
@@ -150,6 +232,12 @@ export class Hud {
     if (this.noticeT > 0) {
       this.noticeT -= dt;
       if (this.noticeT <= 0) this.notice.classList.add('hidden');
+    }
+    if (this.flashT > 0) {
+      this.flashT -= dt;
+      const k = Math.max(0, this.flashT / this.flashDur);
+      this.flashEl.style.opacity = String(k * k * 0.8);
+      if (this.flashT <= 0) this.flashEl.style.opacity = '0';
     }
   }
 }

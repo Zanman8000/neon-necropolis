@@ -365,6 +365,141 @@ export class Sfx {
     this.burst(dest, 1.2, 'lowpass', 600, 120, 0.8, 0.8, 0.1);
   }
 
+  // ------------------------------------------------------------------ melee, machines, power-ups
+
+  meleeSwing(): void {
+    const dest = this.out(0.35);
+    if (!dest) return;
+    this.burst(dest, 0.22, 'bandpass', 600, 2200, 1.2, 0.8, 0.03);
+  }
+
+  meleeHit(kill: boolean): void {
+    const dest = this.out(kill ? 0.6 : 0.45);
+    if (!dest) return;
+    this.burst(dest, 0.16, 'lowpass', 1800, 300, 0.8, 1);
+    this.tone(dest, 'sine', 180, 60, 0.18, 0.8);
+  }
+
+  perkDrink(): void {
+    const dest = this.out(0.45);
+    if (!dest) return;
+    this.burst(dest, 0.35, 'bandpass', 500, 1400, 2, 0.6, 0.05);
+    setTimeout(() => {
+      const d2 = this.out(0.4);
+      if (!d2) return;
+      this.tone(d2, 'sine', 523, 523, 0.14, 0.7);
+      setTimeout(() => {
+        const d3 = this.out(0.4);
+        if (d3) this.tone(d3, 'sine', 784, 784, 0.25, 0.7);
+      }, 130);
+    }, 350);
+  }
+
+  powerOn(x: number, z: number): void {
+    const dest = this.out(0.8, x, z);
+    if (!dest) return;
+    this.tone(dest, 'square', 60, 30, 0.5, 0.6, 0.01);
+    this.burst(dest, 0.5, 'lowpass', 1200, 100, 0.8, 0.8, 0.01);
+    setTimeout(() => {
+      const d2 = this.out(0.5);
+      if (!d2) return;
+      this.tone(d2, 'sawtooth', 40, 110, 2.2, 0.35, 0.3);
+      this.tone(d2, 'sine', 110, 220, 2.0, 0.3, 0.3);
+    }, 300);
+  }
+
+  crateOpen(x: number, z: number): void {
+    const dest = this.out(0.5, x, z);
+    if (!dest) return;
+    this.burst(dest, 0.4, 'lowpass', 900, 200, 0.8, 0.8, 0.02);
+    this.tone(dest, 'triangle', 220, 440, 0.6, 0.4, 0.05);
+  }
+
+  crateTick(x: number, z: number, pitch: number): void {
+    const dest = this.out(0.25, x, z);
+    if (!dest) return;
+    this.tone(dest, 'square', 440 * pitch, 440 * pitch, 0.05, 0.5);
+  }
+
+  crateOffer(x: number, z: number): void {
+    const dest = this.out(0.5, x, z);
+    if (!dest) return;
+    this.tone(dest, 'sine', 660, 660, 0.15, 0.7);
+    setTimeout(() => {
+      const d2 = this.out(0.5, x, z);
+      if (d2) this.tone(d2, 'sine', 880, 880, 0.15, 0.7);
+    }, 140);
+    setTimeout(() => {
+      const d3 = this.out(0.5, x, z);
+      if (d3) this.tone(d3, 'sine', 1320, 1320, 0.4, 0.7);
+    }, 280);
+  }
+
+  crateMove(x: number, z: number): void {
+    const dest = this.out(0.55, x, z);
+    if (!dest) return;
+    this.tone(dest, 'sawtooth', 300, 90, 1.2, 0.5, 0.02);
+    this.tone(dest, 'square', 150, 45, 1.2, 0.3, 0.02);
+  }
+
+  upgradeStart(x: number, z: number): void {
+    const dest = this.out(0.55, x, z);
+    if (!dest) return;
+    this.tone(dest, 'sawtooth', 55, 220, 3.2, 0.4, 0.2);
+    this.burst(dest, 3.2, 'bandpass', 300, 3000, 2, 0.35, 0.3);
+  }
+
+  upgradeReady(x: number, z: number): void {
+    const dest = this.out(0.6, x, z);
+    if (!dest) return;
+    this.tone(dest, 'sine', 440, 440, 0.2, 0.7);
+    setTimeout(() => {
+      const d2 = this.out(0.6, x, z);
+      if (d2) this.tone(d2, 'sine', 660, 660, 0.2, 0.7);
+    }, 180);
+    setTimeout(() => {
+      const d3 = this.out(0.6, x, z);
+      if (!d3) return;
+      this.tone(d3, 'sine', 880, 880, 0.6, 0.7);
+      this.tone(d3, 'sine', 1320, 1320, 0.6, 0.4);
+    }, 360);
+  }
+
+  powerupPickup(kind: string): void {
+    const dest = this.out(0.6);
+    if (!dest) return;
+    if (kind === 'nuke') {
+      this.burst(dest, 1.4, 'lowpass', 1500, 40, 0.8, 1, 0.005);
+      this.tone(dest, 'sine', 90, 25, 1.4, 1, 0.005);
+      return;
+    }
+    if (kind === 'instakill') {
+      this.tone(dest, 'sawtooth', 220, 110, 0.9, 0.5, 0.01, 8);
+      this.tone(dest, 'sawtooth', 330, 165, 0.9, 0.4, 0.01, -8);
+      return;
+    }
+    const notes = kind === 'maxammo' ? [523, 659, 784, 1047] : kind === 'doublepoints' ? [659, 784, 988, 1319] : [392, 523, 659];
+    notes.forEach((f, i) => {
+      setTimeout(() => {
+        const d = this.out(0.45);
+        if (d) this.tone(d, 'sine', f, f, 0.22, 0.8);
+      }, i * 90);
+    });
+  }
+
+  powerupExpire(): void {
+    const dest = this.out(0.35);
+    if (!dest) return;
+    this.tone(dest, 'sine', 660, 330, 0.5, 0.6, 0.02);
+  }
+
+  revive(): void {
+    const dest = this.out(0.6);
+    if (!dest) return;
+    this.tone(dest, 'sine', 220, 880, 1.2, 0.6, 0.1);
+    this.burst(dest, 0.6, 'highpass', 800, 3000, 1, 0.3, 0.2);
+  }
+
   // ------------------------------------------------------------------ ambience
 
   startAmbience(): void {

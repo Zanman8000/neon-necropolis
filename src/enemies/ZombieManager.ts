@@ -38,6 +38,8 @@ export class ZombieManager {
   private lastCell = { x: -1, z: -1 };
   private targets: THREE.Object3D[] = [];
   private targetsDirty = true;
+  /** While true every hit is lethal. */
+  instaKill = false;
   onRoundStart: ((round: number) => void) | null = null;
   onRoundEnd: ((round: number) => void) | null = null;
   onKill: ((zombie: Zombie, headshot: boolean) => void) | null = null;
@@ -87,7 +89,7 @@ export class ZombieManager {
   applyDamage(hit: ZombieHit): { zombie: Zombie; killed: boolean; headshot: boolean } | null {
     const z = (hit.object.userData as { zombie?: Zombie }).zombie;
     if (!z || !z.active) return null;
-    z.health -= hit.damage;
+    z.health -= this.instaKill ? z.health : hit.damage;
     z.hitFlash();
     const n = hit.direction.clone().negate();
     this.sparks.emit(hit.point, n, 5, ICHOR, 2.5, 0.07, 0.6);
@@ -101,7 +103,46 @@ export class ZombieManager {
     return { zombie: z, killed: false, headshot };
   }
 
-  private kill(z: Zombie, headshot: boolean): void {
+  /** Swing a melee weapon from the player. Hits up to two zombies in the arc. Returns what was hit. */
+  meleeHit(px: number, pz: number, fx: number, fz: number, range: number, arcCos: number, damage: number): { zombie: Zombie; killed: boolean }[] {
+    const cands: { z: Zombie; d: number }[] = [];
+    for (const z of this.zombies) {
+      if (!z.active) continue;
+      const dx = z.pos.x - px;
+      const dz = z.pos.z - pz;
+      const d = Math.hypot(dx, dz);
+      if (d > range + ZOMBIE.radius) continue;
+      if (d > 0.01 && (dx / d) * fx + (dz / d) * fz < arcCos) continue;
+      cands.push({ z, d });
+    }
+    cands.sort((a, b) => a.d - b.d);
+    const out: { zombie: Zombie; killed: boolean }[] = [];
+    for (const { z } of cands.slice(0, 2)) {
+      z.health -= this.instaKill ? z.health : damage;
+      z.hitFlash();
+      const p = new THREE.Vector3(z.pos.x, z.y + 1.3, z.pos.z);
+      const n = new THREE.Vector3(z.pos.x - px, 0.3, z.pos.z - pz).normalize();
+      this.sparks.emit(p, n, 8, ICHOR, 3, 0.07, 0.6);
+      this.sfx.zombieHit(z.pos.x, z.pos.z);
+      const killed = z.health <= 0;
+      if (killed) this.kill(z, false);
+      out.push({ zombie: z, killed });
+    }
+    return out;
+  }
+
+  /** Kill every active zombie (nuke). No per-kill callbacks fire. */
+  killAll(): number {
+    let n = 0;
+    for (const z of this.zombies) {
+      if (!z.active) continue;
+      this.kill(z, false, true);
+      n++;
+    }
+    return n;
+  }
+
+  private kill(z: Zombie, headshot: boolean, silent = false): void {
     z.state = 'dying';
     z.timer = ZOMBIE.dieTime;
     z.fallDir = Math.random() < 0.8 ? 1 : -1;
@@ -110,7 +151,7 @@ export class ZombieManager {
     this.kills++;
     this.targetsDirty = true;
     this.sfx.zombieDie(z.pos.x, z.pos.z);
-    this.onKill?.(z, headshot);
+    if (!silent) this.onKill?.(z, headshot);
   }
 
   update(dt: number, player: Player): void {
@@ -306,11 +347,15 @@ export class ZombieManager {
         break;
       }
       case 'chase': {
-        if (!player.alive) {
+        if (!player.alive || player.downed) {
           z.targetYaw = Math.atan2(-dx, -dz);
+          if (player.downed && dist < 3.5) {
+            // wander off a little while the player is down
+            moveWithCollision(z.pos, (-dx / (dist || 1)) * z.speed * 0.5 * dt, (-dz / (dist || 1)) * z.speed * 0.5 * dt, ZOMBIE.radius, this.level.isBlocked);
+          }
           break;
         }
-        if (dist < ZOMBIE.attackRange && z.cooldown <= 0) {
+        if (dist < ZOMBIE.attackRange && z.cooldown <= 0 && !player.downed) {
           z.state = 'attack';
           z.timer = ZOMBIE.attackWindup;
           this.sfx.zombieAttack(z.pos.x, z.pos.z);
@@ -347,7 +392,7 @@ export class ZombieManager {
         z.targetYaw = Math.atan2(-dx, -dz);
         z.timer -= dt;
         if (z.timer <= 0) {
-          if (dist < ZOMBIE.attackReach && player.alive) player.takeDamage(ZOMBIE.damage);
+          if (dist < ZOMBIE.attackReach && player.alive && !player.downed) player.takeDamage(ZOMBIE.damage);
           z.cooldown = ZOMBIE.attackCooldown;
           z.state = 'chase';
         }

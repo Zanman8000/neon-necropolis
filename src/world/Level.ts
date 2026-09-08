@@ -21,6 +21,7 @@ import { MAP_ROWS, DOOR_COSTS, ZONES, SIGNS, EXTRA_LIGHTS, FLOODS, START_ZONE } 
 import * as Tex from './Textures';
 import { WEAPONS } from '../weapons/WeaponDefs';
 import { buildGunModel } from '../weapons/GunModels';
+import { PerkMachine, PowerLever, UpgradeStation, SalvageCrate, type Emissives, type MachineMaterials } from './Machines';
 
 // three-mesh-bvh acceleration for bullet raycasts
 (THREE.BufferGeometry.prototype as unknown as { computeBoundsTree: unknown }).computeBoundsTree = computeBoundsTree;
@@ -111,6 +112,11 @@ export class Level {
   readonly windows: WindowState[] = [];
   readonly buys: BuyState[] = [];
   readonly pods: PodState[] = [];
+  readonly perks: PerkMachine[] = [];
+  power: PowerLever | null = null;
+  upgrade: UpgradeStation | null = null;
+  crate: SalvageCrate | null = null;
+  powerOn = false;
   readonly walkable: Uint8Array;
   readonly activeZones = new Set<number>([START_ZONE]);
   readonly center: THREE.Vector3;
@@ -122,6 +128,7 @@ export class Level {
   private bulletTargets: THREE.Object3D[] = [];
   private targetsDirty = true;
   private readonly neons: NeonEntry[] = [];
+  private readonly neonByMat = new Map<THREE.Material, NeonEntry>();
   private neonScale = 1;
   private readonly pointLights: THREE.PointLight[] = [];
   private readonly rainMat: THREE.ShaderMaterial;
@@ -153,6 +160,7 @@ export class Level {
     this.buildBuys();
     this.buildPods();
     this.buildSigns();
+    this.buildMachines();
     this.buildFloods();
     this.buildLights();
     this.buildSkyline();
@@ -223,6 +231,30 @@ export class Level {
     this.rain.visible = v;
   }
 
+  /** Flip the main power on: perk machines and the overclock station light up. */
+  setPower(on: boolean): void {
+    this.powerOn = on;
+    for (const p of this.perks) p.setPower(on);
+    this.upgrade?.setPower(on);
+    if (on) this.power?.activate();
+    else this.power?.reset();
+  }
+
+  private emissives(): Emissives {
+    return {
+      create: (color, intensity) => this.neon(color, intensity),
+      register: (mat) => {
+        this.registerNeon(mat);
+      },
+      dim: (mat, k) => {
+        const e = this.neonByMat.get(mat);
+        if (!e) return;
+        e.k = k;
+        this.applyNeon(e);
+      },
+    };
+  }
+
   // ---------------------------------------------------------------- state changes
 
   openDoor(door: DoorState): void {
@@ -271,6 +303,9 @@ export class Level {
     }
     this.activeZones.clear();
     this.activeZones.add(START_ZONE);
+    this.setPower(false);
+    this.upgrade?.reset();
+    this.crate?.reset(Math.random());
     this.targetsDirty = true;
   }
 
@@ -311,6 +346,10 @@ export class Level {
       (p.ring.material as THREE.MeshBasicMaterial).color.setRGB(1.4 * pulse * this.neonScale, 0.1 * pulse, 0.14 * pulse);
     }
     this.rainMat.uniforms.uTime.value = this.time;
+    for (const p of this.perks) p.update(dt);
+    this.power?.update(dt);
+    this.upgrade?.update(dt);
+    this.crate?.update(dt);
     this.cullT -= dt;
     if (this.cullT <= 0) {
       this.cullT = 0.25;
@@ -345,6 +384,7 @@ export class Level {
     };
     if (flicker === 'broken') e.k = 0.05;
     this.neons.push(e);
+    this.neonByMat.set(mat, e);
     this.applyNeon(e);
     return e;
   }
@@ -792,6 +832,40 @@ export class Level {
       let light: THREE.PointLight | undefined;
       if (s.light) light = this.addPointLight(s.color, 30, 12, px + s.face.x * 0.7, s.y - 0.5, pz + s.face.z * 0.7);
       this.registerNeon(mat, s.broken ? 'broken' : s.flicker ? 'flicker' : undefined, light);
+    }
+  }
+
+  private buildMachines(): void {
+    const em = this.emissives();
+    const mats: MachineMaterials = { metalDark: this.mats.metalDark, steel: this.mats.steel, fixture: this.mats.fixture, concrete: this.mats.concrete };
+    const addTargets = (root: THREE.Object3D) => {
+      root.traverse((o) => {
+        const m = o as THREE.Mesh;
+        if (m.isMesh && (m.material as THREE.Material).type === 'MeshStandardMaterial') this.staticTargets.push(m);
+      });
+    };
+    for (const def of this.data.perks) {
+      const machine = new PerkMachine(def, em, mats);
+      this.group.add(machine.group);
+      addTargets(machine.group);
+      this.perks.push(machine);
+    }
+    if (this.data.power) {
+      this.power = new PowerLever(this.data.power, em, mats);
+      this.group.add(this.power.group);
+      addTargets(this.power.group);
+    }
+    if (this.data.upgrade) {
+      this.upgrade = new UpgradeStation(this.data.upgrade, em, mats);
+      this.group.add(this.upgrade.group);
+      addTargets(this.upgrade.group);
+    }
+    if (this.data.crates.length > 0) {
+      this.crate = new SalvageCrate(this.data.crates, em, mats);
+      this.group.add(this.crate.padGroup);
+      this.group.add(this.crate.group);
+      addTargets(this.crate.padGroup);
+      addTargets(this.crate.group);
     }
   }
 

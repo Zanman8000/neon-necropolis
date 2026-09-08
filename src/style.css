@@ -625,3 +625,67 @@ canvas#game {
   accent-color: var(--cyan);
   cursor: pointer;
 }
+
+/* ------------------------------------------------------------------ loop: perks, power-ups, flash */
+
+#flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+#perks {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.perk {
+  width: 30px;
+  height: 30px;
+  border: 1px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  background: rgba(5, 8, 16, 0.6);
+}
+#powerups {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.powerup {
+  width: 220px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 12px;
+  letter-spacing: 0.3em;
+}
+.powerup .pu-bar {
+  height: 3px;
+  margin-top: 3px;
+  background: rgba(223, 233, 255, 0.15);
+}
+.powerup .pu-fill {
+  height: 100%;
+  transition: width 0.2s linear;
+}
+.powerup.ending {
+  animation: blink 0.5s steps(2) infinite;
+}
+.slot.melee {
+  border-color: rgba(255, 176, 32, 0.45);
+}
+.slot.melee.active {
+  border-color: var(--amber);
+  color: var(--amber);
+  box-shadow: 0 0 8px rgba(255, 176, 32, 0.5);
+}

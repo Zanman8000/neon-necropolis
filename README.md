@@ -16,18 +16,21 @@ A browser-based, round-survival first-person shooter set in a clean corporate cy
 | Reload | R |
 | Interact (buy, open doors, repair barricades) | F (hold F to repair) |
 | Sprint / crouch / jump | Shift / Ctrl / Space |
-| Swap weapon | 1, 2 or mouse wheel |
+| Weapons | 1, 2 guns · 3 blade · 4 third gun with Pack Mule · mouse wheel cycles |
+| Quick knife | V |
 
 ## What is in the game right now
 
 - One map, **Sector 7**, with four zones: Transit Plaza (spawn), Noodle Street, SynthCorp Lobby and the Data Vault. Blast doors open zones for points.
 - Nine barricaded windows and three floor spawn pods. Zombies tear through barricades; you can repair them for points.
 - Rounds that scale in count, health and speed on the classic zombies curve, with a 24-zombie cap.
-- Points economy: hits, kills, headshots and repairs earn points; doors and wall buys spend them.
-- Four weapons: the PX-7 sidearm you start with, plus the Kestrel SMG, Riot-12 shotgun and Halcyon AR-90 as wall buys. Two weapon slots, reloads, aim-down-sights, recoil and hip-fire spread.
-- Health with regeneration, damage vignette, death screen and a persistent best round.
-- Procedural neon signage, flickering lights, rain, a distant skyline, bloom and shadows.
-- Fully synthesized sound: gunfire, reloads, groans, barricade tearing, doors, round stingers and ambience.
+- Points economy: hits, kills, headshots and repairs earn points; doors, wall buys, perks, the crate and the overclock station spend them. Ammo refills are proportional when you are short on points.
+- Seven guns: the PX-7 sidearm you start with, the Kestrel SMG, Riot-12 shotgun and Halcyon AR-90 as wall buys, and the Havoc LMG, Ion Lance and Prism Cannon from the salvage crate. Two gun slots (three with Pack Mule), a permanent carbon blade on slot 3, quick knife on V, reloads, aim-down-sights, recoil, hip-fire while sprinting, auto-reload when you run dry.
+- **The loop:** a main power lever, five perk vendors (Quick Patch, Ironhide, Rapid Rack, Trigger Tonic, Pack Mule), the roaming salvage crate with a relocation chance, and the Overclock Station that upgrades a weapon's damage and ammo.
+- Power-up drops from kills: Max Ammo, Insta-Kill, Double Points, Nuke and Carpenter.
+- Health with regeneration, downed-and-revive with Quick Patch, damage vignette, death screen and a persistent best round.
+- Procedural neon signage, flickering lights, lamp posts and floodlights, rain, a distant skyline, bloom and shadows.
+- Fully synthesized sound: gunfire, reloads, groans, barricade tearing, doors, machines, power-ups, round stingers and ambience.
 - Settings menu: mouse sensitivity, field of view, volume, neon brightness, graphics quality, rain and invert Y, saved in the browser.
 
 ## Development
@@ -64,7 +67,6 @@ tests/                    vitest suites
 
 ## Roadmap
 
-1. Mystery box, power switch, perks and the upgrade machine.
-2. Power-up drops: max ammo, insta-kill, double points, nuke, carpenter.
-3. Real character models and animations to replace the procedural placeholders.
-4. Balance pass, performance pass and cross-browser testing for v1.0.
+1. Climbing onto low props, lootable grenades and throwing knives.
+2. Real character models and animations to replace the procedural placeholders.
+3. Balance pass, performance pass and cross-browser testing for v1.0.

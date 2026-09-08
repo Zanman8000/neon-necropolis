@@ -7,14 +7,15 @@ export const POINTS = {
   hit: 10,
   killBody: 50,
   killHead: 100,
+  killMelee: 80,
   repairPlank: 10,
   repairCapPerRound: 100,
 } as const;
 
 export const PLAYER = {
   maxHealth: 100,
-  regenDelay: 4.0,
-  regenRate: 30,
+  regenDelay: 6.0,
+  regenRate: 12,
   walkSpeed: 4.6,
   sprintSpeed: 7.0,
   crouchSpeed: 2.4,
@@ -32,7 +33,7 @@ export const ZOMBIE = {
   attackReach: 1.75,
   attackWindup: 0.35,
   attackCooldown: 1.05,
-  damage: 35,
+  damage: 25,
   tearInterval: 1.25,
   climbTime: 1.1,
   riseTime: 1.5,
@@ -95,4 +96,80 @@ export function pointsForHit(kill: boolean, headshot: boolean, multiplier = 1): 
   let p = POINTS.hit;
   if (kill) p += headshot ? POINTS.killHead : POINTS.killBody;
   return p * multiplier;
+}
+
+// ---------------------------------------------------------------- the loop: perks, crate, upgrades, power-ups
+
+export interface PerkInfo {
+  id: string;
+  name: string;
+  cost: number;
+  color: number;
+  short: string;
+  desc: string;
+}
+
+export const PERKS: Record<string, PerkInfo> = {
+  quickpatch: { id: 'quickpatch', name: 'QUICK PATCH', cost: 500, color: 0x22e6ff, short: 'QP', desc: 'AUTO-REVIVE WHEN DOWNED' },
+  ironhide: { id: 'ironhide', name: 'IRONHIDE', cost: 2500, color: 0xff2a4a, short: 'IH', desc: 'DOUBLE HEALTH' },
+  rapidrack: { id: 'rapidrack', name: 'RAPID RACK', cost: 3000, color: 0x3dff8a, short: 'RR', desc: 'RELOAD TWICE AS FAST' },
+  triggertonic: { id: 'triggertonic', name: 'TRIGGER TONIC', cost: 2000, color: 0xffb020, short: 'TT', desc: 'FASTER FIRE, HARDER HITS' },
+  packmule: { id: 'packmule', name: 'PACK MULE', cost: 4000, color: 0xff3ea5, short: 'PM', desc: 'CARRY A THIRD WEAPON' },
+};
+
+export const PERK_LIMIT = 4;
+export const QUICKPATCH_MAX_BUYS = 3;
+export const IRONHIDE_HEALTH = 200;
+export const RAPID_RACK_RELOAD = 0.5;
+export const TRIGGER_TONIC = { rpm: 1.3, damage: 1.5 } as const;
+
+export const CRATE_COST = 950;
+export const CRATE_ROLL_TIME = 3.2;
+export const CRATE_OFFER_TIME = 9;
+export const CRATE_MOVE_CHANCE = 0.15;
+export const CRATE_MOVE_MIN_USES = 3;
+
+export const UPGRADE_COST = 5000;
+export const UPGRADE_TIME = 3.5;
+export const UPGRADE = { damage: 2.5, mag: 1.5, reserve: 1.5 } as const;
+
+export type PowerupKind = 'maxammo' | 'instakill' | 'doublepoints' | 'nuke' | 'carpenter';
+
+export interface PowerupInfo {
+  id: PowerupKind;
+  name: string;
+  color: number;
+  duration: number;
+}
+
+export const POWERUPS: Record<PowerupKind, PowerupInfo> = {
+  maxammo: { id: 'maxammo', name: 'MAX AMMO', color: 0x3dff8a, duration: 0 },
+  instakill: { id: 'instakill', name: 'INSTA-KILL', color: 0xff2a4a, duration: 30 },
+  doublepoints: { id: 'doublepoints', name: 'DOUBLE POINTS', color: 0xffb020, duration: 30 },
+  nuke: { id: 'nuke', name: 'NUKE', color: 0xffffff, duration: 0 },
+  carpenter: { id: 'carpenter', name: 'CARPENTER', color: 0x7fb4ff, duration: 0 },
+};
+
+export const POWERUP_DROP_CHANCE = 0.035;
+export const POWERUP_MIN_GAP = 10;
+export const POWERUP_MAX_PER_ROUND = 4;
+export const POWERUP_LIFETIME = 30;
+export const NUKE_POINTS = 400;
+export const CARPENTER_POINTS = 200;
+
+/** Pick a power-up kind. Nuke and insta-kill are rarer than the others. */
+export function pickPowerup(rnd: number): PowerupKind {
+  const table: [PowerupKind, number][] = [
+    ['maxammo', 28],
+    ['doublepoints', 24],
+    ['instakill', 20],
+    ['carpenter', 16],
+    ['nuke', 12],
+  ];
+  let t = rnd * table.reduce((a, [, w]) => a + w, 0);
+  for (const [kind, w] of table) {
+    t -= w;
+    if (t < 0) return kind;
+  }
+  return 'maxammo';
 }
