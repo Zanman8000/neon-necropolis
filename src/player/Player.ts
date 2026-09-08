@@ -20,6 +20,7 @@ export class Player {
   health: number = PLAYER.maxHealth;
   alive = true;
   sensitivity = 0.0022;
+  invertY = false;
   baseFov = 75;
   bobPhase = 0;
   bobAmount = 0;
@@ -87,7 +88,7 @@ export class Player {
     if (allowInput && this.alive) {
       const sens = this.sensitivity * (1 - ads * 0.45);
       this.yaw -= input.mouseDX * sens;
-      this.pitch -= input.mouseDY * sens;
+      this.pitch -= input.mouseDY * sens * (this.invertY ? -1 : 1);
       // keyboard look fallback (arrow keys)
       const look = 1.8 * dt;
       if (input.isDown('ArrowLeft')) this.yaw += look;

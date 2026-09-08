@@ -539,3 +539,89 @@ canvas#game {
   color: var(--cyan);
   text-shadow: 0 0 12px rgba(34, 230, 255, 0.7);
 }
+
+/* ------------------------------------------------------------------ settings */
+
+.overlay {
+  cursor: default;
+}
+.overlay.light {
+  background: radial-gradient(ellipse at center, rgba(8, 6, 20, 0.35), rgba(3, 2, 8, 0.8));
+}
+.btn-row {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  margin-top: 26px;
+  flex-wrap: wrap;
+}
+.btn.secondary {
+  color: rgba(223, 233, 255, 0.75);
+  border-color: rgba(223, 233, 255, 0.35);
+  background: rgba(223, 233, 255, 0.04);
+  box-shadow: none;
+}
+.btn.secondary:hover {
+  color: #fff;
+  border-color: rgba(223, 233, 255, 0.8);
+  background: rgba(223, 233, 255, 0.1);
+  box-shadow: 0 0 18px rgba(223, 233, 255, 0.2);
+}
+.panel.settings {
+  padding: 30px 46px;
+  border: 1px solid rgba(34, 230, 255, 0.25);
+  background: rgba(5, 8, 16, 0.75);
+  box-shadow: 0 0 40px rgba(34, 230, 255, 0.12);
+}
+.panel.settings h2 {
+  font-size: 34px;
+  margin-bottom: 22px;
+}
+.rows {
+  display: grid;
+  gap: 16px;
+  width: min(560px, 80vw);
+}
+.row {
+  display: grid;
+  grid-template-columns: 190px 1fr 64px;
+  align-items: center;
+  gap: 16px;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  color: rgba(223, 233, 255, 0.8);
+  text-align: left;
+  cursor: pointer;
+}
+.row output {
+  text-align: right;
+  color: var(--cyan);
+  font-size: 12px;
+}
+.row input[type='range'] {
+  width: 100%;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}
+.row select {
+  width: 100%;
+  font-family: var(--font-display);
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  color: var(--cyan);
+  background: rgba(5, 12, 20, 0.9);
+  border: 1px solid rgba(34, 230, 255, 0.5);
+  padding: 7px 10px;
+  cursor: pointer;
+}
+.row .check {
+  display: flex;
+  align-items: center;
+}
+.row input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--cyan);
+  cursor: pointer;
+}

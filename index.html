@@ -47,7 +47,10 @@
         <div class="panel">
           <div class="eyebrow">SECTOR 7 · TRANSIT PLAZA · QUARANTINE BREACH</div>
           <h1>NEON<br />NECROPOLIS</h1>
-          <button id="btn-start" class="btn">CLICK TO DEPLOY</button>
+          <div class="btn-row">
+            <button id="btn-start" class="btn">DEPLOY</button>
+            <button id="btn-settings-start" class="btn secondary">SETTINGS</button>
+          </div>
           <div class="controls">
             <span>WASD move</span><span>Mouse aim</span><span>LMB fire</span><span>RMB aim</span><span>R reload</span><span>F interact</span
             ><span>Shift sprint</span><span>Ctrl crouch</span><span>Space jump</span><span>1 / 2 swap</span><span>Esc pause</span>
@@ -61,7 +64,62 @@
         <div class="panel">
           <div class="eyebrow">SIGNAL HELD</div>
           <h2>PAUSED</h2>
-          <button id="btn-resume" class="btn">RESUME</button>
+          <div class="btn-row">
+            <button id="btn-resume" class="btn">RESUME</button>
+            <button id="btn-settings-pause" class="btn secondary">SETTINGS</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="overlay-settings" class="overlay light hidden">
+        <div class="panel settings">
+          <div class="eyebrow">SYSTEM CONFIG</div>
+          <h2>SETTINGS</h2>
+          <div class="rows">
+            <label class="row">
+              <span>Mouse sensitivity</span>
+              <input id="set-sens" type="range" min="0.2" max="3" step="0.05" />
+              <output id="out-sens">1.00</output>
+            </label>
+            <label class="row">
+              <span>Field of view</span>
+              <input id="set-fov" type="range" min="60" max="110" step="1" />
+              <output id="out-fov">75</output>
+            </label>
+            <label class="row">
+              <span>Master volume</span>
+              <input id="set-vol" type="range" min="0" max="1" step="0.05" />
+              <output id="out-vol">80%</output>
+            </label>
+            <label class="row">
+              <span>Neon brightness</span>
+              <input id="set-neon" type="range" min="0" max="2" step="0.05" />
+              <output id="out-neon">100%</output>
+            </label>
+            <label class="row">
+              <span>Graphics quality</span>
+              <select id="set-quality">
+                <option value="low">LOW · no shadows, no bloom</option>
+                <option value="medium">MEDIUM</option>
+                <option value="high">HIGH</option>
+              </select>
+              <output></output>
+            </label>
+            <label class="row">
+              <span>Rain</span>
+              <span class="check"><input id="set-rain" type="checkbox" /></span>
+              <output></output>
+            </label>
+            <label class="row">
+              <span>Invert mouse Y</span>
+              <span class="check"><input id="set-invert" type="checkbox" /></span>
+              <output></output>
+            </label>
+          </div>
+          <div class="btn-row">
+            <button id="btn-settings-back" class="btn">BACK</button>
+            <button id="btn-settings-reset" class="btn secondary">RESET DEFAULTS</button>
+          </div>
         </div>
       </div>
 

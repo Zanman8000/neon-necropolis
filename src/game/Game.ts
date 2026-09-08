@@ -15,6 +15,7 @@ import { ZombieManager } from '../enemies/ZombieManager';
 import { Sfx } from '../audio/Sfx';
 import { Sparks } from '../fx/Particles';
 import { Hud } from '../ui/Hud';
+import { SettingsPanel, loadSettings, type SettingsData, type Quality } from '../ui/Settings';
 import { START_POINTS, POINTS, PLAYER, pointsForHit } from './Rules';
 
 type State = 'boot' | 'start' | 'playing' | 'paused' | 'dead';
@@ -25,6 +26,7 @@ type Interactable =
   | { kind: 'window'; win: WindowState; d: number };
 
 const BEST_KEY = 'neon-necropolis.best-round';
+const BASE_SENSITIVITY = 0.0022;
 
 function $(id: string): HTMLElement {
   const e = document.getElementById(id);
@@ -43,6 +45,7 @@ export class Game {
   zombies!: ZombieManager;
   sparks!: Sparks;
   hud!: Hud;
+  settings!: SettingsPanel;
   private composer!: EffectComposer;
   private bloom!: UnrealBloomPass;
   state: State = 'boot';
@@ -51,6 +54,8 @@ export class Game {
   private repairT = 0;
   private last = 0;
   private fps = 60;
+  private quality: Quality | null = null;
+  private settingsReturn: 'start' | 'pause' = 'start';
   private readonly nolock: boolean;
   private readonly debug: boolean;
   private readonly overlays = { start: $('overlay-start'), pause: $('overlay-pause'), dead: $('overlay-dead') };
@@ -109,11 +114,20 @@ export class Game {
     this.resize();
     window.addEventListener('resize', () => this.resize());
 
-    this.overlays.start.addEventListener('click', () => {
+    this.settings = new SettingsPanel(
+      loadSettings(),
+      (s) => this.applySettings(s),
+      () => this.closeSettings(),
+    );
+    this.applySettings(this.settings.data);
+
+    $('btn-start').addEventListener('click', () => {
       if (this.state === 'start') void this.startGame();
     });
     $('btn-resume').addEventListener('click', () => void this.resume());
     $('btn-restart').addEventListener('click', () => void this.restart());
+    $('btn-settings-start').addEventListener('click', () => this.openSettings('start'));
+    $('btn-settings-pause').addEventListener('click', () => this.openSettings('pause'));
     this.input.onLockChange = (locked) => {
       if (!locked && this.state === 'playing' && !this.nolock) this.pause();
     };
@@ -139,6 +153,48 @@ export class Game {
     this.player.camera.updateProjectionMatrix();
   }
 
+  // ---------------------------------------------------------------- settings
+
+  private applySettings(s: SettingsData): void {
+    this.player.sensitivity = BASE_SENSITIVITY * s.sensitivity;
+    this.player.invertY = s.invertY;
+    this.player.baseFov = s.fov;
+    this.sfx.setVolume(s.volume);
+    this.level.setNeonScale(s.neon);
+    this.level.setRainVisible(s.rain);
+    if (s.quality !== this.quality) this.applyQuality(s.quality);
+  }
+
+  private applyQuality(q: Quality): void {
+    this.quality = q;
+    const dpr = q === 'high' ? Math.min(window.devicePixelRatio, 1.5) : q === 'medium' ? Math.min(window.devicePixelRatio, 1) : 0.85;
+    this.renderer.setPixelRatio(dpr);
+    this.composer.setPixelRatio(dpr);
+    this.resize();
+    const sun = this.level.sun;
+    sun.castShadow = q !== 'low';
+    const size = q === 'high' ? 2048 : 1024;
+    if (sun.shadow.mapSize.x !== size) {
+      sun.shadow.mapSize.set(size, size);
+      if (sun.shadow.map) {
+        sun.shadow.map.dispose();
+        sun.shadow.map = null;
+      }
+    }
+    this.bloom.enabled = q !== 'low';
+  }
+
+  private openSettings(from: 'start' | 'pause'): void {
+    this.settingsReturn = from;
+    this.overlays[from].classList.add('hidden');
+    this.settings.open();
+  }
+
+  private closeSettings(): void {
+    this.settings.close();
+    this.overlays[this.settingsReturn].classList.remove('hidden');
+  }
+
   // ---------------------------------------------------------------- state transitions
 
   private resetRun(): void {
@@ -157,8 +213,14 @@ export class Game {
 
   private async acquireLock(): Promise<void> {
     if (this.nolock) return;
-    const ok = await this.input.requestLock();
+    let ok = await this.input.requestLock();
     if (!ok) {
+      // Browsers refuse a re-lock for about a second after Esc released it. Try once more.
+      await new Promise((r) => setTimeout(r, 1200));
+      if (this.state !== 'playing') return;
+      ok = await this.input.requestLock();
+    }
+    if (!ok && this.state === 'playing') {
       this.input.allowUnlockedLook = true;
       this.hud.showNotice('POINTER LOCK UNAVAILABLE · MOUSE LOOK WITHOUT CAPTURE', 4);
     }
@@ -232,9 +294,10 @@ export class Game {
 
   private update(dt: number): void {
     const playing = this.state === 'playing';
-    if (this.nolock) {
-      if (playing && this.input.wasPressed('Escape')) this.pause();
-      else if (this.state === 'paused' && this.input.wasPressed('Escape')) void this.resume();
+    if (this.input.wasPressed('Escape')) {
+      if (this.settings.isOpen) this.closeSettings();
+      else if (this.state === 'paused') void this.resume();
+      else if (playing && this.nolock) this.pause();
     }
     this.level.update(dt, this.player.pos);
     this.sparks.update(dt);
@@ -248,9 +311,14 @@ export class Game {
       this.sfx.listener = { x: this.player.pos.x, z: this.player.pos.z, yaw: this.player.yaw };
       this.syncHud();
     } else if (this.state === 'start') {
-      // idle camera drift on the title screen
+      // idle camera drift on the title screen; arsenal update keeps the field of view live for the settings panel
       this.player.yaw += dt * 0.05;
+      this.arsenal.update(dt, this.input, this.player, false);
       this.player.update(dt, false, 0);
+    } else if (this.state === 'paused') {
+      // keep the view model and field of view in sync so settings changes show live
+      this.arsenal.update(dt, this.input, this.player, false);
+      this.player.update(dt, false, this.arsenal.ads);
     }
     this.input.endFrame();
   }

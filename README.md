@@ -28,6 +28,7 @@ A browser-based, round-survival first-person shooter set in a clean corporate cy
 - Health with regeneration, damage vignette, death screen and a persistent best round.
 - Procedural neon signage, flickering lights, rain, a distant skyline, bloom and shadows.
 - Fully synthesized sound: gunfire, reloads, groans, barricade tearing, doors, round stingers and ambience.
+- Settings menu: mouse sensitivity, field of view, volume, neon brightness, graphics quality, rain and invert Y, saved in the browser.
 
 ## Development
 
@@ -66,5 +67,4 @@ tests/                    vitest suites
 1. Mystery box, power switch, perks and the upgrade machine.
 2. Power-up drops: max ammo, insta-kill, double points, nuke, carpenter.
 3. Real character models and animations to replace the procedural placeholders.
-4. Settings menu: sensitivity, field of view, volume, quality presets.
-5. Balance pass, performance pass and cross-browser testing for v1.0.
+4. Balance pass, performance pass and cross-browser testing for v1.0.
