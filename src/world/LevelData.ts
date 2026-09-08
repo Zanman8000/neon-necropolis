@@ -121,17 +121,17 @@ export interface LightDef {
 }
 
 export const EXTRA_LIGHTS: LightDef[] = [
-  { x: 11.5, z: 20.5, y: 3.2, color: 0x22e6ff, intensity: 45, distance: 14 }, // plaza kiosk
+  { x: 11.5, z: 20.5, y: 4.0, color: 0x22e6ff, intensity: 45, distance: 14 }, // plaza kiosk
   // lobby ceiling lights (cool white)
-  { x: 6.5, z: 5.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
-  { x: 15.5, z: 5.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
-  { x: 6.5, z: 12.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
-  { x: 15.5, z: 12.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 6.5, z: 5.5, y: 3.3, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 15.5, z: 5.5, y: 3.3, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 6.5, z: 12.5, y: 3.3, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 15.5, z: 12.5, y: 3.3, color: 0xdfe8ff, intensity: 90, distance: 20 },
   // vault ceiling lights (pale green)
-  { x: 26.5, z: 6.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
-  { x: 36.5, z: 6.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
-  { x: 26.5, z: 12.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
-  { x: 36.5, z: 12.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 26.5, z: 6.5, y: 3.3, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 36.5, z: 6.5, y: 3.3, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 26.5, z: 12.5, y: 3.3, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 36.5, z: 12.5, y: 3.3, color: 0xd6ffe4, intensity: 80, distance: 20 },
 ];
 
 /** Wall-mounted floodlights: a fixture on a wall cell face plus a point light in front of it. */

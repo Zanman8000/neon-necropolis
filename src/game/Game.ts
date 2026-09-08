@@ -110,6 +110,14 @@ export class Game {
     this.composer.addPass(new RenderPass(this.scene, this.player.camera));
     this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.28, 0.45, 0.96);
     this.composer.addPass(this.bloom);
+    // Cap what a single pixel can feed into the bloom so surfaces right next to a light
+    // (lamp heads, fixtures) glow gently instead of smearing into a giant blob.
+    const highPass = this.bloom.materialHighPassFilter;
+    const mixLine = 'gl_FragColor = mix( outputColor, texel, alpha );';
+    if (highPass.fragmentShader.includes(mixLine)) {
+      highPass.fragmentShader = highPass.fragmentShader.replace(mixLine, 'gl_FragColor = mix( outputColor, min( texel, vec4( 2.2 ) ), alpha );');
+      highPass.needsUpdate = true;
+    }
     this.composer.addPass(new OutputPass());
     this.resize();
     window.addEventListener('resize', () => this.resize());

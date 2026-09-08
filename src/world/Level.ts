@@ -87,6 +87,7 @@ interface Materials {
   plant: THREE.MeshStandardMaterial;
   rack: THREE.MeshStandardMaterial;
   grate: THREE.MeshStandardMaterial;
+  fixture: THREE.MeshStandardMaterial;
 }
 
 function boxGeo(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BoxGeometry {
@@ -388,6 +389,7 @@ export class Level {
         metalness: 0.6,
       }),
       grate: new THREE.MeshStandardMaterial({ color: 0x2e323a, roughness: 0.7, metalness: 0.6 }),
+      fixture: new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.9, metalness: 0.2 }),
     };
   }
 
@@ -600,12 +602,12 @@ export class Level {
           const pole = new THREE.CylinderGeometry(0.06, 0.08, 3.4, 8);
           pole.translate(c.x + 0.55, 0.75 + 1.7, c.z + 0.55);
           push(m.steel, pole);
-          push(m.metalDark, boxGeo(0.7, 0.14, 0.34, c.x + 0.3, 4.2, c.z + 0.55));
-          const face = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.26), this.neon(0xfff1dc, 1.2));
+          push(m.fixture, boxGeo(0.7, 0.14, 0.34, c.x + 0.3, 4.2, c.z + 0.55));
+          const face = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.26), this.neon(0xfff1dc, 0.95));
           face.rotation.x = Math.PI / 2;
           face.position.set(c.x + 0.3, 4.12, c.z + 0.55);
           this.group.add(face);
-          this.addPointLight(0xffe6c4, 120, 22, c.x + 0.3, 3.9, c.z + 0.55);
+          this.addPointLight(0xffe6c4, 120, 22, c.x + 0.3, 3.45, c.z + 0.55);
           break;
         }
         case 'vendor': {
@@ -799,7 +801,7 @@ export class Level {
       const wx = c.x + f.face.x * (CELL / 2);
       const wz = c.z + f.face.z * (CELL / 2);
       const rotY = Math.atan2(f.face.x, f.face.z);
-      const fixture = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.36), this.mats.metalDark);
+      const fixture = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.36), this.mats.fixture);
       fixture.position.set(wx + f.face.x * 0.2, 3.6, wz + f.face.z * 0.2);
       fixture.rotation.y = rotY;
       fixture.castShadow = true;
@@ -808,12 +810,12 @@ export class Level {
       arm.position.set(wx + f.face.x * 0.1, 3.75, wz + f.face.z * 0.1);
       arm.rotation.y = rotY;
       this.group.add(arm);
-      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.28), this.neon(f.color, 1.1));
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.28), this.neon(f.color, 0.95));
       face.rotation.x = Math.PI / 2;
       face.rotation.z = rotY;
       face.position.set(wx + f.face.x * 0.2, 3.48, wz + f.face.z * 0.2);
       this.group.add(face);
-      this.addPointLight(f.color, f.intensity, 22, wx + f.face.x * 0.9, 3.3, wz + f.face.z * 0.9);
+      this.addPointLight(f.color, f.intensity, 22, wx + f.face.x * 1.4, 2.95, wz + f.face.z * 1.4);
     }
   }
 
