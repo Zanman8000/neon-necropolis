@@ -131,8 +131,8 @@ export class Zombie {
 
   randomizeLook(): void {
     const trim = TRIM[Math.floor(Math.random() * TRIM.length)];
-    this.trimMat.color.set(trim).multiplyScalar(2.4);
-    this.eyeMat.color.set(Math.random() < 0.7 ? 0xff2a3a : trim).multiplyScalar(3);
+    this.trimMat.color.set(trim).multiplyScalar(1.4);
+    this.eyeMat.color.set(Math.random() < 0.7 ? 0xff2a3a : trim).multiplyScalar(1.8);
     this.clothMat.color.set(JACKETS[Math.floor(Math.random() * JACKETS.length)]);
     const h = 0.22 + Math.random() * 0.14;
     this.skinMat.color.setHSL(h, 0.12 + Math.random() * 0.15, 0.4 + Math.random() * 0.2);

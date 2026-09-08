@@ -121,8 +121,38 @@ export interface LightDef {
 }
 
 export const EXTRA_LIGHTS: LightDef[] = [
-  { x: 11.5, z: 20.5, y: 3.2, color: 0x22e6ff, intensity: 30, distance: 16 }, // plaza kiosk
-  { x: 31, z: 22, y: 3.4, color: 0xff8c1a, intensity: 25, distance: 14 }, // noodle street centre
-  { x: 11, z: 8, y: 3.6, color: 0x9ec4ff, intensity: 30, distance: 18 }, // lobby desk
-  { x: 31.5, z: 9, y: 3.6, color: 0x3dff8a, intensity: 26, distance: 18 }, // vault centre
+  { x: 11.5, z: 20.5, y: 3.2, color: 0x22e6ff, intensity: 45, distance: 14 }, // plaza kiosk
+  // lobby ceiling lights (cool white)
+  { x: 6.5, z: 5.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 15.5, z: 5.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 6.5, z: 12.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  { x: 15.5, z: 12.5, y: 3.8, color: 0xdfe8ff, intensity: 90, distance: 20 },
+  // vault ceiling lights (pale green)
+  { x: 26.5, z: 6.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 36.5, z: 6.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 26.5, z: 12.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
+  { x: 36.5, z: 12.5, y: 3.8, color: 0xd6ffe4, intensity: 80, distance: 20 },
+];
+
+/** Wall-mounted floodlights: a fixture on a wall cell face plus a point light in front of it. */
+export interface FloodDef {
+  x: number;
+  z: number;
+  face: Vec2i;
+  color: number;
+  intensity: number;
+}
+
+export const FLOODS: FloodDef[] = [
+  // Transit Plaza
+  { x: 2, z: 25, face: { x: 1, z: 0 }, color: 0xffe6c4, intensity: 110 },
+  { x: 14, z: 15, face: { x: 0, z: 1 }, color: 0xffe6c4, intensity: 110 },
+  { x: 21, z: 20, face: { x: -1, z: 0 }, color: 0xffe6c4, intensity: 110 },
+  // Noodle Street (warm amber)
+  { x: 29, z: 19, face: { x: 0, z: -1 }, color: 0xffc990, intensity: 90 },
+  { x: 33, z: 20, face: { x: 0, z: 1 }, color: 0xffc990, intensity: 90 },
+  { x: 36, z: 24, face: { x: 0, z: -1 }, color: 0xffc990, intensity: 90 },
+  { x: 26, z: 25, face: { x: 0, z: 1 }, color: 0xffc990, intensity: 90 },
+  { x: 41, z: 27, face: { x: -1, z: 0 }, color: 0xffc990, intensity: 90 },
+  { x: 38, z: 15, face: { x: 0, z: 1 }, color: 0xffc990, intensity: 90 },
 ];

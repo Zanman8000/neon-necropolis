@@ -17,7 +17,7 @@ import {
   type BuyDef,
   type PodDef,
 } from './Grid';
-import { MAP_ROWS, DOOR_COSTS, ZONES, SIGNS, EXTRA_LIGHTS, START_ZONE } from './LevelData';
+import { MAP_ROWS, DOOR_COSTS, ZONES, SIGNS, EXTRA_LIGHTS, FLOODS, START_ZONE } from './LevelData';
 import * as Tex from './Textures';
 import { WEAPONS } from '../weapons/WeaponDefs';
 import { buildGunModel } from '../weapons/GunModels';
@@ -26,6 +26,9 @@ import { buildGunModel } from '../weapons/GunModels';
 (THREE.BufferGeometry.prototype as unknown as { computeBoundsTree: unknown }).computeBoundsTree = computeBoundsTree;
 (THREE.BufferGeometry.prototype as unknown as { disposeBoundsTree: unknown }).disposeBoundsTree = disposeBoundsTree;
 (THREE.Mesh.prototype as unknown as { raycast: unknown }).raycast = acceleratedRaycast;
+
+/** How many point lights are active at once. Kept constant so shaders never recompile. */
+const ACTIVE_POINT_LIGHTS = 10;
 
 export interface DoorState {
   def: DoorDef;
@@ -59,12 +62,14 @@ export interface PodState {
   ring: THREE.Mesh;
 }
 
-interface Flicker {
+/** An emissive material whose brightness follows the neon setting, optionally flickering. */
+interface NeonEntry {
   mat: THREE.MeshBasicMaterial;
   base: THREE.Color;
+  k: number;
+  flicker?: 'flicker' | 'broken';
   light?: THREE.PointLight;
   lightBase?: number;
-  mode: 'flicker' | 'broken';
   on: boolean;
   t: number;
 }
@@ -84,14 +89,18 @@ interface Materials {
   grate: THREE.MeshStandardMaterial;
 }
 
-function neon(color: number, intensity = 2.6): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) });
-}
-
 function boxGeo(w: number, h: number, d: number, x: number, y: number, z: number): THREE.BoxGeometry {
   const g = new THREE.BoxGeometry(w, h, d);
   g.translate(x, y, z);
   return g;
+}
+
+function lcg(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s = (s * 1103515245 + 12345) & 0x7fffffff;
+    return s / 0x7fffffff;
+  };
 }
 
 export class Level {
@@ -105,15 +114,19 @@ export class Level {
   readonly activeZones = new Set<number>([START_ZONE]);
   readonly center: THREE.Vector3;
   readonly sun: THREE.DirectionalLight;
+  readonly rain: THREE.Points;
   private readonly blockedStatic: Uint8Array;
   private readonly doorAtCell = new Map<number, DoorState>();
   private readonly staticTargets: THREE.Object3D[] = [];
   private bulletTargets: THREE.Object3D[] = [];
   private targetsDirty = true;
-  private readonly flickers: Flickers = [];
-  private readonly rainMat: THREE.ShaderMaterial | null = null;
+  private readonly neons: NeonEntry[] = [];
+  private neonScale = 1;
+  private readonly pointLights: THREE.PointLight[] = [];
+  private readonly rainMat: THREE.ShaderMaterial;
   private readonly mats: Materials;
   private time = 0;
+  private cullT = 0;
   onZoneActivated: ((zone: number) => void) | null = null;
 
   constructor() {
@@ -125,7 +138,7 @@ export class Level {
     for (let i = 0; i < width * height; i++) {
       const k = kinds[i];
       const floor = k === 'floor' && !propAt[i];
-      this.blockedStatic[i] = k === 'floor' && !propAt[i] ? 0 : k === 'door' ? 0 : 1;
+      this.blockedStatic[i] = floor || k === 'door' ? 0 : 1;
       this.walkable[i] = floor ? 1 : 0;
     }
     this.mats = this.makeMaterials();
@@ -139,11 +152,15 @@ export class Level {
     this.buildBuys();
     this.buildPods();
     this.buildSigns();
+    this.buildFloods();
     this.buildLights();
     this.buildSkyline();
     this.buildDebris();
-    this.rainMat = this.buildRain();
+    const rain = this.buildRain();
+    this.rain = rain.points;
+    this.rainMat = rain.mat;
     this.sun = this.buildSun();
+    this.cullLights(this.center.x, this.center.z);
   }
 
   // ---------------------------------------------------------------- queries
@@ -191,6 +208,18 @@ export class Level {
       this.targetsDirty = false;
     }
     return this.bulletTargets;
+  }
+
+  // ---------------------------------------------------------------- settings hooks
+
+  /** Scales every neon / emissive sign. 1 is the default look. */
+  setNeonScale(s: number): void {
+    this.neonScale = s;
+    for (const e of this.neons) this.applyNeon(e);
+  }
+
+  setRainVisible(v: boolean): void {
+    this.rain.visible = v;
   }
 
   // ---------------------------------------------------------------- state changes
@@ -244,7 +273,7 @@ export class Level {
     this.targetsDirty = true;
   }
 
-  update(dt: number): void {
+  update(dt: number, playerPos: { x: number; z: number }): void {
     this.time += dt;
     for (const d of this.doors) {
       if (d.open && d.anim < 1) {
@@ -257,19 +286,19 @@ export class Level {
         }
       }
     }
-    for (const f of this.flickers) {
-      f.t -= dt;
-      if (f.t <= 0) {
-        if (f.mode === 'flicker') {
-          f.on = f.on ? Math.random() < 0.25 : Math.random() < 0.85;
-          f.t = f.on ? 0.15 + Math.random() * 2.2 : 0.03 + Math.random() * 0.14;
+    for (const e of this.neons) {
+      if (!e.flicker) continue;
+      e.t -= dt;
+      if (e.t <= 0) {
+        if (e.flicker === 'flicker') {
+          e.on = e.on ? Math.random() < 0.25 : Math.random() < 0.85;
+          e.t = e.on ? 0.15 + Math.random() * 2.2 : 0.03 + Math.random() * 0.14;
         } else {
-          f.on = f.on ? false : Math.random() < 0.3;
-          f.t = f.on ? 0.03 + Math.random() * 0.2 : 0.2 + Math.random() * 1.6;
+          e.on = e.on ? false : Math.random() < 0.3;
+          e.t = e.on ? 0.03 + Math.random() * 0.2 : 0.2 + Math.random() * 1.6;
         }
-        const k = f.on ? 1 : f.mode === 'broken' ? 0.05 : 0.12;
-        f.mat.color.copy(f.base).multiplyScalar(k);
-        if (f.light && f.lightBase !== undefined) f.light.intensity = f.lightBase * k;
+        e.k = e.on ? 1 : e.flicker === 'broken' ? 0.05 : 0.12;
+        this.applyNeon(e);
       }
     }
     for (const b of this.buys) {
@@ -278,12 +307,63 @@ export class Level {
     }
     const pulse = 0.55 + 0.45 * Math.sin(this.time * 3);
     for (const p of this.pods) {
-      (p.ring.material as THREE.MeshBasicMaterial).color.setRGB(2.2 * pulse, 0.15 * pulse, 0.2 * pulse);
+      (p.ring.material as THREE.MeshBasicMaterial).color.setRGB(1.4 * pulse * this.neonScale, 0.1 * pulse, 0.14 * pulse);
     }
-    if (this.rainMat) this.rainMat.uniforms.uTime.value = this.time;
+    this.rainMat.uniforms.uTime.value = this.time;
+    this.cullT -= dt;
+    if (this.cullT <= 0) {
+      this.cullT = 0.25;
+      this.cullLights(playerPos.x, playerPos.z);
+    }
   }
 
-  // ---------------------------------------------------------------- building
+  // ---------------------------------------------------------------- helpers
+
+  private applyNeon(e: NeonEntry): void {
+    e.mat.color.copy(e.base).multiplyScalar(this.neonScale * e.k);
+    if (e.light && e.lightBase !== undefined) e.light.intensity = e.lightBase * e.k;
+  }
+
+  /** Create an unlit emissive material registered with the neon system. */
+  private neon(color: number, intensity = 1.35, flicker?: 'flicker' | 'broken'): THREE.MeshBasicMaterial {
+    const mat = new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(intensity) });
+    this.registerNeon(mat, flicker);
+    return mat;
+  }
+
+  private registerNeon(mat: THREE.MeshBasicMaterial, flicker?: 'flicker' | 'broken', light?: THREE.PointLight): NeonEntry {
+    const e: NeonEntry = {
+      mat,
+      base: mat.color.clone(),
+      k: 1,
+      flicker,
+      light,
+      lightBase: light?.intensity,
+      on: flicker !== 'broken',
+      t: Math.random(),
+    };
+    if (flicker === 'broken') e.k = 0.05;
+    this.neons.push(e);
+    this.applyNeon(e);
+    return e;
+  }
+
+  private addPointLight(color: number, intensity: number, distance: number, x: number, y: number, z: number): THREE.PointLight {
+    const light = new THREE.PointLight(color, intensity, distance, 2);
+    light.position.set(x, y, z);
+    this.group.add(light);
+    this.pointLights.push(light);
+    return light;
+  }
+
+  /** Keep exactly ACTIVE_POINT_LIGHTS nearest lights on so the shader light count never changes. */
+  private cullLights(px: number, pz: number): void {
+    const n = Math.min(ACTIVE_POINT_LIGHTS, this.pointLights.length);
+    const sorted = this.pointLights
+      .map((l) => ({ l, d: Math.hypot(l.position.x - px, l.position.z - pz) - l.distance * 0.35 }))
+      .sort((a, b) => a.d - b.d);
+    for (let i = 0; i < sorted.length; i++) sorted[i].l.visible = i < n;
+  }
 
   private makeMaterials(): Materials {
     const floorTex = Tex.floorTexture();
@@ -303,7 +383,7 @@ export class Level {
         map: rack.map,
         emissiveMap: rack.emissive,
         emissive: 0xffffff,
-        emissiveIntensity: 2.2,
+        emissiveIntensity: 1.4,
         roughness: 0.5,
         metalness: 0.6,
       }),
@@ -328,6 +408,8 @@ export class Level {
     return this.addStatic(new THREE.Mesh(merged, mat), cast, receive, bvh);
   }
 
+  // ---------------------------------------------------------------- building
+
   private buildSky(): void {
     const geo = new THREE.SphereGeometry(420, 24, 12);
     const mat = new THREE.ShaderMaterial({
@@ -335,7 +417,7 @@ export class Level {
       depthWrite: false,
       fog: false,
       uniforms: {
-        uTop: { value: new THREE.Color(0x04030a) },
+        uTop: { value: new THREE.Color(0x05040c) },
         uHorizon: { value: new THREE.Color(0x1a1026) },
       },
       vertexShader: `
@@ -393,11 +475,7 @@ export class Level {
       { x: 0, z: 1 },
       { x: 0, z: -1 },
     ];
-    let seed = 17;
-    const rnd = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
+    const rnd = lcg(17);
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         if (kinds[this.idx(x, z)] !== 'wall') continue;
@@ -409,23 +487,20 @@ export class Level {
           if (!this.inBounds(nx, nz) || kinds[this.idx(nx, nz)] !== 'floor') continue;
           const zone = zones[this.idx(nx, nz)];
           const r = rnd();
-          if (r < 0.12) continue; // dead segment
-          const along = d.x !== 0 ? { w: 0.05, d: CELL - 0.02 } : { w: CELL - 0.02, d: 0.05 };
+          if (r < 0.15) continue; // dead segment
+          const along = d.x !== 0 ? { w: 0.04, d: CELL - 0.02 } : { w: CELL - 0.02, d: 0.04 };
           const off = CELL / 2 + 0.03;
-          const g = boxGeo(along.w, 0.07, along.d, c.x + d.x * off, 2.9, c.z + d.z * off);
+          const g = boxGeo(along.w, 0.06, along.d, c.x + d.x * off, 2.9, c.z + d.z * off);
           const zi = ZONES[zone];
-          if (r < 0.24) {
-            // individual flickering segment
-            const mat = neon(zi.color);
-            const m = new THREE.Mesh(g, mat);
+          if (r < 0.27) {
+            const m = new THREE.Mesh(g, this.neon(zi.color, 1.1, r < 0.19 ? 'broken' : 'flicker'));
             this.group.add(m);
-            this.flickers.push({ mat, base: mat.color.clone(), mode: r < 0.16 ? 'broken' : 'flicker', on: true, t: rnd() });
             continue;
           }
           if (!stripsByZone.has(zone)) stripsByZone.set(zone, []);
           stripsByZone.get(zone)!.push(g);
-          if (zi.outdoor && rnd() < 0.8) {
-            stripsByZone.get(zone)!.push(boxGeo(along.w, 0.05, along.d, c.x + d.x * off, 0.12, c.z + d.z * off));
+          if (zi.outdoor && rnd() < 0.35) {
+            stripsByZone.get(zone)!.push(boxGeo(along.w, 0.04, along.d, c.x + d.x * off, 0.12, c.z + d.z * off));
           }
         }
       }
@@ -434,8 +509,7 @@ export class Level {
     for (const [zone, geos] of stripsByZone) {
       const merged = mergeGeometries(geos, false);
       if (!merged) continue;
-      const m = new THREE.Mesh(merged, neon(ZONES[zone].color));
-      this.group.add(m);
+      this.group.add(new THREE.Mesh(merged, this.neon(ZONES[zone].color, 1.1)));
     }
   }
 
@@ -443,11 +517,7 @@ export class Level {
     const { width, height, kinds, zones } = this.data;
     const panels: THREE.BufferGeometry[] = [];
     const lightsOn: THREE.BufferGeometry[] = [];
-    let seed = 5;
-    const rnd = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
+    const rnd = lcg(5);
     for (let z = 0; z < height; z++) {
       for (let x = 0; x < width; x++) {
         const i = this.idx(x, z);
@@ -464,10 +534,7 @@ export class Level {
           const r = rnd();
           if (r < 0.2) continue; // dead panel
           if (r < 0.32) {
-            const mat = neon(0xdfe9ff, 2.2);
-            const m = new THREE.Mesh(p, mat);
-            this.group.add(m);
-            this.flickers.push({ mat, base: mat.color.clone(), mode: 'flicker', on: true, t: rnd() });
+            this.group.add(new THREE.Mesh(p, this.neon(0xdfe9ff, 1.5, 'flicker')));
             continue;
           }
           lightsOn.push(p);
@@ -476,7 +543,7 @@ export class Level {
     }
     this.mergeInto(panels, this.mats.ceiling, false, true);
     const merged = mergeGeometries(lightsOn, false);
-    if (merged) this.group.add(new THREE.Mesh(merged, neon(0xdfe9ff, 2.2)));
+    if (merged) this.group.add(new THREE.Mesh(merged, this.neon(0xdfe9ff, 1.5)));
   }
 
   private buildProps(): void {
@@ -486,11 +553,13 @@ export class Level {
       byMat.get(mat)!.push(g);
     };
     const m = this.mats;
-    let seed = 99;
-    const rnd = () => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return seed / 0x7fffffff;
-    };
+    const rnd = lcg(99);
+    const dirs4 = [
+      { x: 1, z: 0 },
+      { x: -1, z: 0 },
+      { x: 0, z: 1 },
+      { x: 0, z: -1 },
+    ];
     for (const p of this.data.props) {
       const c = cellCenter(p.x, p.z);
       const zone = ZONES[p.zone];
@@ -499,19 +568,13 @@ export class Level {
           push(m.metalDark, boxGeo(1.7, 3.0, 1.7, c.x, 1.5, c.z));
           push(m.metalDark, boxGeo(1.9, 0.12, 1.9, c.x, 3.06, c.z));
           const screen = Tex.hologramTexture(['SECTOR 7', 'TRANSIT MAP'], zone.color, 256, 256);
-          for (const d of [
-            { x: 1, z: 0 },
-            { x: -1, z: 0 },
-            { x: 0, z: 1 },
-            { x: 0, z: -1 },
-          ]) {
-            const pg = new THREE.PlaneGeometry(1.1, 1.3);
-            const mat = new THREE.MeshBasicMaterial({ map: screen, transparent: true, color: new THREE.Color(zone.color).multiplyScalar(1.6) });
-            const mesh = new THREE.Mesh(pg, mat);
+          for (const d of dirs4) {
+            const mat = new THREE.MeshBasicMaterial({ map: screen, transparent: true, color: new THREE.Color(zone.color).multiplyScalar(1.0) });
+            const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1.1, 1.3), mat);
             mesh.position.set(c.x + d.x * 0.87, 1.9, c.z + d.z * 0.87);
             mesh.rotation.y = Math.atan2(d.x, d.z);
             this.group.add(mesh);
-            if (rnd() < 0.35) this.flickers.push({ mat, base: mat.color.clone(), mode: 'flicker', on: true, t: rnd() });
+            this.registerNeon(mat, rnd() < 0.35 ? 'flicker' : undefined);
           }
           break;
         }
@@ -533,6 +596,16 @@ export class Level {
             g.translate(c.x + (rnd() - 0.5) * 0.9, 0.75, c.z + (rnd() - 0.5) * 0.9);
             push(m.plant, g);
           }
+          // integrated lamp post: the plaza's real street lighting
+          const pole = new THREE.CylinderGeometry(0.06, 0.08, 3.4, 8);
+          pole.translate(c.x + 0.55, 0.75 + 1.7, c.z + 0.55);
+          push(m.steel, pole);
+          push(m.metalDark, boxGeo(0.7, 0.14, 0.34, c.x + 0.3, 4.2, c.z + 0.55));
+          const face = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.26), this.neon(0xfff1dc, 1.2));
+          face.rotation.x = Math.PI / 2;
+          face.position.set(c.x + 0.3, 4.12, c.z + 0.55);
+          this.group.add(face);
+          this.addPointLight(0xffe6c4, 120, 22, c.x + 0.3, 3.9, c.z + 0.55);
           break;
         }
         case 'vendor': {
@@ -542,12 +615,12 @@ export class Level {
           g.translate(c.x, 0.9, c.z);
           push(m.metalDark, g);
           const tex = Tex.hologramTexture(['VEND-O', 'OUT OF ORDER'], 0xff3ea5, 256, 256);
-          const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(0xff3ea5).multiplyScalar(1.5) });
+          const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(0xff3ea5).multiplyScalar(1.0) });
           const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.8), mat);
           screen.position.set(c.x + 0.3, 1.3, c.z + 0.42);
           screen.rotation.set(0, 0.6, -0.22);
           this.group.add(screen);
-          this.flickers.push({ mat, base: mat.color.clone(), mode: 'broken', on: false, t: 0.5 });
+          this.registerNeon(mat, 'broken');
           break;
         }
         case 'column': {
@@ -568,14 +641,13 @@ export class Level {
       }
     }
     for (const [mat, geos] of byMat) this.mergeInto(geos, mat, true, true);
-    // desk light strip and rack floor glow
     const deskStrip: THREE.BufferGeometry[] = [];
     for (const p of this.data.props) {
       const c = cellCenter(p.x, p.z);
       if (p.kind === 'desk') deskStrip.push(boxGeo(CELL, 0.03, 0.03, c.x, 1.0, c.z - CELL / 2 - 0.01));
     }
     const ds = mergeGeometries(deskStrip, false);
-    if (ds) this.group.add(new THREE.Mesh(ds, neon(0xffffff, 1.8)));
+    if (ds) this.group.add(new THREE.Mesh(ds, this.neon(0xffffff, 1.0)));
   }
 
   private buildWindows(): void {
@@ -583,7 +655,6 @@ export class Level {
       const c = cellCenter(def.x, def.z);
       const g = new THREE.Group();
       g.position.set(c.x, 0, c.z);
-      // local space: opening runs along local X, passage along local Z
       const alongX = def.dir.z !== 0; // passage along z means the opening spans x
       g.rotation.y = alongX ? 0 : Math.PI / 2;
       const frame: THREE.BufferGeometry[] = [
@@ -598,15 +669,14 @@ export class Level {
       (frameMesh.geometry as unknown as { computeBoundsTree: () => void }).computeBoundsTree();
       g.add(frameMesh);
       this.staticTargets.push(frameMesh);
-      // quarantine beacon on the outside
-      const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.12), neon(0xff2a4a, 2.5));
+      const beacon = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.12, 0.12), this.neon(0xff2a4a, 1.4));
       const outSign = def.dir.z !== 0 ? -def.dir.z : -def.dir.x;
       beacon.position.set(0, 2.75, outSign * 0.42);
       g.add(beacon);
       const planks: THREE.Mesh[] = [];
       for (let i = 0; i < PLANKS_MAX; i++) {
         const plank = new THREE.Mesh(new THREE.BoxGeometry(CELL - 0.3, 0.16, 0.1), this.mats.steel);
-        plank.position.set((i % 2 === 0 ? 0.03 : -0.03), 0.72 + i * 0.4, (i % 2 === 0 ? 0.04 : -0.04));
+        plank.position.set(i % 2 === 0 ? 0.03 : -0.03, 0.72 + i * 0.4, i % 2 === 0 ? 0.04 : -0.04);
         plank.rotation.z = (i % 2 === 0 ? 1 : -1) * 0.03;
         plank.castShadow = true;
         g.add(plank);
@@ -632,25 +702,25 @@ export class Level {
       const c = cellCenter(def.x, def.z);
       const g = new THREE.Group();
       g.position.set(c.x, 0, c.z);
-      g.rotation.y = def.axis === 'z' ? 0 : Math.PI / 2; // slab spans local X, passage along local Z
+      g.rotation.y = def.axis === 'z' ? 0 : Math.PI / 2;
       const slab = new THREE.Mesh(new THREE.BoxGeometry(CELL - 0.05, WALL_H, 0.5), this.mats.metalDark);
       slab.position.y = WALL_H / 2;
       slab.castShadow = true;
       slab.receiveShadow = true;
       g.add(slab);
-      const stripe = new THREE.Mesh(new THREE.BoxGeometry(CELL - 0.3, 0.08, 0.54), neon(0xff2a4a, 2));
-      stripe.position.y = 2.6;
-      slab.add(stripe);
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(CELL - 0.3, 0.08, 0.54), this.neon(0xff2a4a, 1.2));
       stripe.position.y = 2.6 - WALL_H / 2;
+      slab.add(stripe);
       const tex = Tex.hologramTexture(['BLAST DOOR', `${def.cost}`], 0xff2a4a);
       const signs: THREE.Mesh[] = [];
       for (const side of [1, -1]) {
-        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1.8, 1.8, 1.8), depthWrite: false });
+        const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1.2, 1.2, 1.2), depthWrite: false });
         const s = new THREE.Mesh(new THREE.PlaneGeometry(1.5, 0.75), mat);
         s.position.set(0, 2.35, side * 0.29);
         s.rotation.y = side > 0 ? 0 : Math.PI;
         g.add(s);
         signs.push(s);
+        this.registerNeon(mat);
       }
       this.group.add(g);
       const state: DoorState = { def, open: false, anim: 0, pos: c, slab, signs };
@@ -665,17 +735,18 @@ export class Level {
       const c = cellCenter(def.x, def.z);
       const wallFace = { x: c.x + def.wallDir.x * (CELL / 2), z: c.z + def.wallDir.z * (CELL / 2) };
       const tex = Tex.hologramTexture([weapon.name, `${weapon.cost}`], weapon.accent);
-      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1.6, 1.6, 1.6), depthWrite: false });
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1.1, 1.1, 1.1), depthWrite: false });
       const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 0.95), mat);
       sign.position.set(wallFace.x - def.wallDir.x * 0.04, 2.25, wallFace.z - def.wallDir.z * 0.04);
       sign.rotation.y = Math.atan2(-def.wallDir.x, -def.wallDir.z);
       this.group.add(sign);
+      this.registerNeon(mat);
       const display = new THREE.Group();
       const model = buildGunModel(weapon.model, weapon.accent);
       model.group.scale.setScalar(1.5);
       model.group.rotation.z = 0.15;
       display.add(model.group);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.025, 8, 32), neon(weapon.accent, 2.2));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.42, 0.025, 8, 32), this.neon(weapon.accent, 1.3));
       ring.rotation.x = Math.PI / 2;
       ring.position.y = -0.5;
       display.add(ring);
@@ -692,7 +763,7 @@ export class Level {
       grate.position.set(c.x, 0.03, c.z);
       grate.receiveShadow = true;
       this.group.add(grate);
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 8, 40), neon(0xff2a4a, 2.2));
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.035, 8, 40), new THREE.MeshBasicMaterial({ color: 0xff2a4a }));
       ring.rotation.x = Math.PI / 2;
       ring.position.set(c.x, 0.07, c.z);
       this.group.add(ring);
@@ -706,53 +777,60 @@ export class Level {
       const px = c.x + s.face.x * (CELL / 2 + 0.05);
       const pz = c.z + s.face.z * (CELL / 2 + 0.05);
       const tex = Tex.signTexture(s.text, s.color, Math.round(s.w * 96), Math.round(s.h * 96));
-      const mat = new THREE.MeshBasicMaterial({
-        map: tex,
-        transparent: true,
-        depthWrite: false,
-        color: new THREE.Color(s.broken ? 0.9 : 2.4, s.broken ? 0.9 : 2.4, s.broken ? 0.9 : 2.4),
-      });
+      const k = s.broken ? 0.7 : 1.35;
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, color: new THREE.Color(k, k, k) });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(s.w, s.h), mat);
       mesh.position.set(px, s.y, pz);
       mesh.rotation.y = Math.atan2(s.face.x, s.face.z);
       this.group.add(mesh);
-      // backing plate
       const plate = new THREE.Mesh(new THREE.BoxGeometry(s.w + 0.2, s.h + 0.2, 0.08), this.mats.metalDark);
-      plate.position.set(c.x + s.face.x * (CELL / 2 + 0.0), s.y, c.z + s.face.z * (CELL / 2 + 0.0));
+      plate.position.set(c.x + s.face.x * (CELL / 2), s.y, c.z + s.face.z * (CELL / 2));
       plate.rotation.y = mesh.rotation.y;
       this.group.add(plate);
       let light: THREE.PointLight | undefined;
-      if (s.light) {
-        light = new THREE.PointLight(s.color, 55, 14, 2);
-        light.position.set(px + s.face.x * 0.7, s.y - 0.5, pz + s.face.z * 0.7);
-        this.group.add(light);
-      }
-      if (s.flicker || s.broken) {
-        this.flickers.push({
-          mat,
-          base: mat.color.clone(),
-          light,
-          lightBase: light?.intensity,
-          mode: s.broken ? 'broken' : 'flicker',
-          on: !s.broken,
-          t: Math.random(),
-        });
-      }
+      if (s.light) light = this.addPointLight(s.color, 30, 12, px + s.face.x * 0.7, s.y - 0.5, pz + s.face.z * 0.7);
+      this.registerNeon(mat, s.broken ? 'broken' : s.flicker ? 'flicker' : undefined, light);
+    }
+  }
+
+  private buildFloods(): void {
+    for (const f of FLOODS) {
+      const c = cellCenter(f.x, f.z);
+      const wx = c.x + f.face.x * (CELL / 2);
+      const wz = c.z + f.face.z * (CELL / 2);
+      const rotY = Math.atan2(f.face.x, f.face.z);
+      const fixture = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.22, 0.36), this.mats.metalDark);
+      fixture.position.set(wx + f.face.x * 0.2, 3.6, wz + f.face.z * 0.2);
+      fixture.rotation.y = rotY;
+      fixture.castShadow = true;
+      this.group.add(fixture);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.06, 0.3), this.mats.steel);
+      arm.position.set(wx + f.face.x * 0.1, 3.75, wz + f.face.z * 0.1);
+      arm.rotation.y = rotY;
+      this.group.add(arm);
+      const face = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.28), this.neon(f.color, 1.1));
+      face.rotation.x = Math.PI / 2;
+      face.rotation.z = rotY;
+      face.position.set(wx + f.face.x * 0.2, 3.48, wz + f.face.z * 0.2);
+      this.group.add(face);
+      this.addPointLight(f.color, f.intensity, 22, wx + f.face.x * 0.9, 3.3, wz + f.face.z * 0.9);
     }
   }
 
   private buildLights(): void {
-    for (const l of EXTRA_LIGHTS) {
-      const light = new THREE.PointLight(l.color, l.intensity * 2.5, l.distance, 2);
-      light.position.set(l.x * CELL, l.y, l.z * CELL);
-      this.group.add(light);
-    }
-    const hemi = new THREE.HemisphereLight(0x5c6aa8, 0x2a2230, 1.1);
+    for (const l of EXTRA_LIGHTS) this.addPointLight(l.color, l.intensity, l.distance, l.x * CELL, l.y, l.z * CELL);
+    const hemi = new THREE.HemisphereLight(0x7a86bf, 0x3a3140, 1.5);
     this.group.add(hemi);
+    // soft fill from the far side so shadowed faces never go fully black
+    const fill = new THREE.DirectionalLight(0x6f7cb0, 0.7);
+    fill.position.set(this.center.x - 60, 40, this.center.z + 50);
+    fill.target.position.copy(this.center);
+    this.group.add(fill);
+    this.group.add(fill.target);
   }
 
   private buildSun(): THREE.DirectionalLight {
-    const sun = new THREE.DirectionalLight(0x9fb4ff, 1.6);
+    const sun = new THREE.DirectionalLight(0xbcc8ff, 2.4);
     sun.position.set(this.center.x + 45, 70, this.center.z - 35);
     sun.target.position.copy(this.center);
     sun.castShadow = true;
@@ -797,9 +875,9 @@ export class Level {
     for (const grp of groups) {
       const merged = mergeGeometries(grp.geos, false);
       if (!merged) continue;
-      const mat = new THREE.MeshBasicMaterial({ map: grp.tex, color: new THREE.Color(1.3, 1.3, 1.3) });
-      const mesh = new THREE.Mesh(merged, mat);
-      this.group.add(mesh);
+      const mat = new THREE.MeshBasicMaterial({ map: grp.tex, color: new THREE.Color(0.55, 0.55, 0.55) });
+      this.registerNeon(mat);
+      this.group.add(new THREE.Mesh(merged, mat));
     }
     const brands: [string, number][] = [
       ['SYNTHCORP', 0x7fb4ff],
@@ -812,12 +890,12 @@ export class Level {
       const ang = (i / brands.length) * Math.PI * 2 + 0.4;
       const rad = 120 + rnd() * 40;
       const tex = Tex.signTexture(text, color, 512, 128);
-      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(2, 2, 2), depthWrite: false });
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1.2, 1.2, 1.2), depthWrite: false });
       const mesh = new THREE.Mesh(new THREE.PlaneGeometry(36, 9), mat);
       mesh.position.set(this.center.x + Math.cos(ang) * rad, 45 + rnd() * 50, this.center.z + Math.sin(ang) * rad);
       mesh.lookAt(this.center.x, mesh.position.y, this.center.z);
       this.group.add(mesh);
-      if (i % 2 === 0) this.flickers.push({ mat, base: mat.color.clone(), mode: 'flicker', on: true, t: rnd() });
+      this.registerNeon(mat, i % 2 === 0 ? 'flicker' : undefined);
     });
   }
 
@@ -848,13 +926,13 @@ export class Level {
     }
   }
 
-  private buildRain(): THREE.ShaderMaterial {
+  private buildRain(): { points: THREE.Points; mat: THREE.ShaderMaterial } {
     const rnd = Tex.mulberry32(4242);
     const { width, height, kinds, zones } = this.data;
     const cells: number[] = [];
     for (let i = 0; i < width * height; i++) {
       const k = kinds[i];
-      if (k === 'outside' || k === 'wall' || k === 'window' || (k === 'floor' && ZONES[zones[i]]?.outdoor) || (k === 'door' && true)) cells.push(i);
+      if (k === 'outside' || k === 'wall' || k === 'window' || k === 'door' || (k === 'floor' && ZONES[zones[i]]?.outdoor)) cells.push(i);
     }
     const N = 7000;
     const pos = new Float32Array(N * 3);
@@ -895,7 +973,7 @@ export class Level {
           vec4 mv = modelViewMatrix * vec4(p, 1.0);
           float d = max(0.1, -mv.z);
           gl_PointSize = clamp(240.0 / d, 2.0, 30.0);
-          vAlpha = clamp(1.3 - d / 40.0, 0.0, 1.0) * 0.55;
+          vAlpha = clamp(1.3 - d / 40.0, 0.0, 1.0) * 0.35;
           gl_Position = projectionMatrix * mv;
         }`,
       fragmentShader: `
@@ -910,8 +988,6 @@ export class Level {
     const points = new THREE.Points(geo, mat);
     points.frustumCulled = false;
     this.group.add(points);
-    return mat;
+    return { points, mat };
   }
 }
-
-type Flickers = Flicker[];

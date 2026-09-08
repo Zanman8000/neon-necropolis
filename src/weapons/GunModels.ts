@@ -16,7 +16,7 @@ const gunmetal = () => new THREE.MeshStandardMaterial({ color: 0x5a6070, metalne
 const polymer = () => new THREE.MeshStandardMaterial({ color: 0x2c2f36, metalness: 0.2, roughness: 0.75, emissive: 0x14161b, emissiveIntensity: 0.5 });
 const steel = () => new THREE.MeshStandardMaterial({ color: 0x9aa3b0, metalness: 0.9, roughness: 0.3, emissive: 0x1a1d24, emissiveIntensity: 0.4 });
 const accentMat = (color: number) =>
-  new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(2.2) });
+  new THREE.MeshBasicMaterial({ color: new THREE.Color(color).multiplyScalar(1.3) });
 
 function box(w: number, h: number, d: number, mat: THREE.Material, x: number, y: number, z: number, rx = 0): THREE.Mesh {
   const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);

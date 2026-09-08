@@ -119,7 +119,7 @@ export class MuzzleFlash {
   constructor(color: number) {
     const mat = new THREE.SpriteMaterial({
       map: flashTexture(),
-      color: new THREE.Color(color).lerp(new THREE.Color(0xfff2d0), 0.6).multiplyScalar(3),
+      color: new THREE.Color(color).lerp(new THREE.Color(0xfff2d0), 0.6).multiplyScalar(2),
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,

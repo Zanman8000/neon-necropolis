@@ -64,7 +64,7 @@ export class Game {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    this.renderer.toneMappingExposure = 1.0;
     this.input = new Input(canvas);
     this.input.allowUnlockedLook = this.nolock;
   }
@@ -103,7 +103,7 @@ export class Game {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.player.camera));
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.65, 0.82);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.28, 0.45, 0.96);
     this.composer.addPass(this.bloom);
     this.composer.addPass(new OutputPass());
     this.resize();
@@ -236,7 +236,7 @@ export class Game {
       if (playing && this.input.wasPressed('Escape')) this.pause();
       else if (this.state === 'paused' && this.input.wasPressed('Escape')) void this.resume();
     }
-    this.level.update(dt);
+    this.level.update(dt, this.player.pos);
     this.sparks.update(dt);
     this.hud.update(dt);
     if (playing || this.state === 'dead') {
